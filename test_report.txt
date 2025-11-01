@@ -1,0 +1,126 @@
+   Compiling argocd-mcp-server v0.1.0 (/home/ob1/codelab/gemini/hypen-argocd-mcp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.11s
+     Running unittests src/lib.rs (target/debug/deps/argocd_mcp_server-7b8229db2b7be723)
+
+running 5 tests
+test argocd_client::tests::test_client_empty_url ... ok
+test argocd_client::tests::test_client_empty_token ... ok
+test tools::tests::test_handler_creation ... ok
+test tools::tests::test_handler_initialization ... ok
+test argocd_client::tests::test_client_creation ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Compiling argocd-mcp-server v0.1.0 (/home/ob1/codelab/gemini/hypen-argocd-mcp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.01s
+     Running tests/integration_test.rs (target/debug/deps/integration_test-061aaf9fd108d80b)
+
+running 65 tests
+test test_authentication_error ... ok
+test test_get_application_helm_chart ... ok
+test test_get_application_authentication_error ... ok
+test test_client_with_trailing_slash_in_url ... ok
+test test_get_application_with_all_parameters ... ok
+test test_get_application_malformed_response ... ok
+test test_full_application_list ... ok
+test test_get_application_not_found ... ok
+test test_get_application_server_error ... ok
+test test_application_name_with_special_characters ... ok
+test test_get_application_forbidden ... ok
+test test_get_application_with_parameters ... ok
+test test_get_application_full ... ok
+test test_empty_application_list ... ok
+test test_get_application ... ok
+test test_error_response_with_empty_message ... ok
+test test_get_application_with_special_characters_in_name ... ok
+test test_get_application_without_sync_policy ... ok
+test test_get_application_with_refresh ... ok
+test test_list_application_names ... ok
+test test_list_applications_all_filters_combined ... ok
+test test_list_application_names_with_all_filters ... ok
+test test_list_application_names_with_filters ... ok
+test test_list_application_names_empty ... ok
+test test_list_applications_multiple_projects ... ok
+test test_list_applications_with_name_filter ... ok
+test test_list_applications_with_app_namespace_filter ... ok
+test test_list_applications_with_repo_filter ... ok
+test test_list_all_applications ... ok
+test test_list_applications_with_filters ... ok
+test test_list_resource_events ... ok
+test test_list_resource_events_all_parameters ... ok
+test test_list_resource_events_empty ... ok
+test test_list_resource_events_authentication_error ... ok
+test test_list_resource_events_malformed_response ... ok
+test test_list_resource_events_forbidden ... ok
+test test_list_resource_events_full ... ok
+test test_list_resource_events_server_error ... ok
+test test_list_resource_events_not_found ... ok
+test test_malformed_json_response ... ok
+test test_list_resource_events_with_special_characters ... ok
+test test_list_resource_events_with_filters ... ok
+test test_resource_tree ... ok
+test test_resource_tree_all_parameters ... ok
+test test_resource_tree_authentication_error ... ok
+test test_resource_tree_empty ... ok
+test test_resource_tree_full ... ok
+test test_resource_tree_with_filters ... ok
+test test_resource_tree_not_found ... ok
+test test_resource_tree_with_multiple_health_statuses ... ok
+test test_server_side_diff ... ok
+test test_resource_tree_server_error ... ok
+test test_server_side_diff_all_parameters ... ok
+test test_server_side_diff_403_forbidden ... ok
+test test_resource_tree_with_orphaned_nodes ... ok
+test test_server_side_diff_no_changes ... ok
+test test_server_error ... ok
+test test_server_side_diff_empty_response ... ok
+test test_server_side_diff_not_found ... ok
+test test_server_side_diff_server_error ... ok
+test test_server_side_diff_authentication_error ... ok
+test test_server_side_diff_full ... ok
+test test_server_side_diff_with_target_manifests ... ok
+test test_server_side_diff_with_parameters ... ok
+test test_network_timeout ... ok
+
+test result: ok. 65 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.14s
+
+
+========================================
+LIST RESOURCE EVENTS TEST SUMMARY
+========================================
+
+Implementation Details:
+- API Endpoint: GET /api/v1/applications/{name}/events
+- Method: list_resource_events
+- Response Type: EventListSummary (optimized for context efficiency)
+
+Tests Implemented:
+1. test_list_resource_events - Basic functionality with multiple event types
+2. test_list_resource_events_with_filters - Resource-specific filtering
+3. test_list_resource_events_empty - Empty event list handling
+4. test_list_resource_events_authentication_error - 401 error handling
+5. test_list_resource_events_not_found - 404 error handling
+6. test_list_resource_events_server_error - 500 error handling
+7. test_list_resource_events_full - Full response details
+8. test_list_resource_events_all_parameters - All query parameters
+9. test_list_resource_events_with_special_characters - URL encoding
+10. test_list_resource_events_malformed_response - Invalid JSON handling
+11. test_list_resource_events_forbidden - 403 error handling
+
+Features Tested:
+✓ Event aggregation by type (Normal/Warning)
+✓ Event aggregation by reason
+✓ Resource filtering (namespace, name, UID)
+✓ Application and project filtering
+✓ Error handling (401, 403, 404, 500)
+✓ Empty response handling
+✓ Special character encoding in URLs
+✓ Malformed JSON response handling
+✓ Context-optimized response format
+
+Total Tests: 65
+Passed: 65
+Failed: 0
+Success Rate: 100%
+
+All tests completed successfully!

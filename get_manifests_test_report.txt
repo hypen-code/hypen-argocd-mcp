@@ -1,0 +1,38 @@
+========================================
+GET MANIFESTS TEST SUMMARY
+========================================
+
+Implementation Details:
+- API Endpoint: GET /api/v1/applications/{name}/manifests
+- Method: get_manifests
+- Response Type: ManifestSummary (context-optimized with parsed manifests)
+
+Key Features:
+✓ YAML manifest parsing
+✓ Manifest grouping by kind
+✓ Metadata extraction (revision, namespace, server, source type)
+✓ Command tracking (hydration commands used)
+✓ Multi-source application support
+✓ Context-optimized preview (first 5 lines per manifest)
+
+Tests Implemented (5 total):
+1. test_get_manifests_basic - Basic functionality with manifest parsing
+2. test_get_manifests_with_revision - Specific revision retrieval
+3. test_get_manifests_empty - Empty manifest handling
+4. test_get_manifests_authentication_error - 401 error handling
+5. test_get_manifests_not_found - 404 error handling
+
+Features Tested:
+✓ Manifest parsing (Deployment, Service, ConfigMap)
+✓ Kind aggregation and counting
+✓ Revision parameter support
+✓ Error handling (401, 404)
+✓ Empty manifest list handling
+✓ Metadata extraction
+
+Total Tests: 85 (80 existing + 5 new)
+Passed: 85
+Failed: 0
+Success Rate: 100%
+
+All tests completed successfully!

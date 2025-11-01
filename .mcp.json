@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "argocd": {
+      "command": "/home/ob1/codelab/gemini/hypen-argocd-mcp/target/release/argocd-mcp-server",
+      "env": {
+        "ARGOCD_BASE_URL": "https://your-argocd-server.com",
+        "ARGOCD_ACCESS_TOKEN": "your-access-token-here"
+      }
+    }
+  }
+}
+
+
