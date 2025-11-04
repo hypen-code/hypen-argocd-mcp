@@ -579,12 +579,6 @@ Sync Windows for application 'my-app' (2 total):
    Namespaces: backend-prod
 ```
 
-## Prerequisites
-
-- Rust 1.70 or later
-- ArgoCD server with API access
-- Valid ArgoCD access token
-
 ## Configuration
 
 The server requires the following environment variables:
@@ -647,36 +641,122 @@ export ARGOCD_INSECURE=true
    argocd account generate-token
    ```
 
+## Installation
+
+### Prerequisites
+
+- Rust 1.70 or later (for building)
+- Python 3.8+ (for running via wrapper)
+
+### Building
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/argocd-mcp-server.git
+cd argocd-mcp-server
+
+# Build the Rust binary
+cargo build --release
+```
+
+### Deploying to Another Location
+
+After building, you can deploy the server to any location. The server consists of two components:
+1. Python wrapper (`argocd_mcp_server.py`)
+2. Rust binary (`target/release/argocd-mcp-server`)
+
+**Important**: The Python wrapper looks for the binary in specific locations relative to itself:
+- `bin/argocd-mcp-server` (recommended for deployment)
+- `argocd-mcp-server` (same directory as wrapper)
+- `target/release/argocd-mcp-server` (development only)
+
+#### Quick Installation
+
+Use the provided installation script:
+
+```bash
+# Install to default location (~/.local/bin/argocd-mcp-server)
+./install.sh
+
+# Or install to custom location
+./install.sh /path/to/installation/directory
+```
+
+#### Manual Installation
+
+```bash
+# Create installation directory
+mkdir -p /path/to/install/bin
+
+# Copy files
+cp argocd_mcp_server.py /path/to/install/
+cp target/release/argocd-mcp-server /path/to/install/bin/
+
+# Make executable
+chmod +x /path/to/install/argocd_mcp_server.py
+chmod +x /path/to/install/bin/argocd-mcp-server
+```
+
+**See [INSTALL.md](INSTALL.md) for detailed installation instructions, troubleshooting, and deployment best practices.**
+
 ## Usage
 
 ### Running the Server
+
+The server can be run in two ways:
+
+#### Method 1: Via Python Wrapper (Recommended - Most Compatible)
+
+This method is compatible with all MCP frameworks that require standard executables:
 
 ```bash
 # Set environment variables
 export ARGOCD_BASE_URL=https://your-argocd-server.com
 export ARGOCD_ACCESS_TOKEN=your-access-token-here
 
-# Run the server
+# Run via Python wrapper
+python3 argocd_mcp_server.py
+```
+
+#### Method 2: Direct Rust Binary
+
+For direct execution or testing (not supported by all MCP frameworks):
+
+```bash
+# Set environment variables
+export ARGOCD_BASE_URL=https://your-argocd-server.com
+export ARGOCD_ACCESS_TOKEN=your-access-token-here
+
+# Run the binary directly
+./target/release/argocd-mcp-server
+# OR
 cargo run --release
 ```
 
 ### Using with MCP Inspector
 
-You can test the server using the MCP Inspector:
+Test the server using the MCP Inspector:
 
 ```bash
-npx @modelcontextprotocol/inspector cargo run --release
+# Via Python wrapper (recommended)
+npx @modelcontextprotocol/inspector python3 argocd_mcp_server.py
+
+# OR via direct binary
+npx @modelcontextprotocol/inspector ./target/release/argocd-mcp-server
 ```
 
 ### Integration with Claude Desktop / Claude Code
 
 Add to your Claude Desktop/Code configuration (`.mcp.json` or `claude_desktop_config.json`):
 
+#### Option 1: Using Python Wrapper (Recommended - Most Compatible)
+
 ```json
 {
   "mcpServers": {
     "argocd": {
-      "command": "/path/to/argocd-mcp-server/target/release/argocd-mcp-server",
+      "command": "python3",
+      "args": ["/absolute/path/to/argocd-mcp-server/argocd_mcp_server.py"],
       "env": {
         "ARGOCD_BASE_URL": "https://your-argocd-server.com",
         "ARGOCD_ACCESS_TOKEN": "your-access-token-here",
@@ -687,7 +767,46 @@ Add to your Claude Desktop/Code configuration (`.mcp.json` or `claude_desktop_co
 }
 ```
 
-**Note**: Only include `"ARGOCD_INSECURE": "true"` if your ArgoCD server uses self-signed certificates. Remove this line for production environments with properly signed certificates.
+#### Option 2: Direct Binary (If your framework supports it)
+
+```json
+{
+  "mcpServers": {
+    "argocd": {
+      "command": "/absolute/path/to/argocd-mcp-server/target/release/argocd-mcp-server",
+      "env": {
+        "ARGOCD_BASE_URL": "https://your-argocd-server.com",
+        "ARGOCD_ACCESS_TOKEN": "your-access-token-here",
+        "ARGOCD_INSECURE": "true"
+      }
+    }
+  }
+}
+```
+
+#### Option 3: Using uvx/pipx (After publishing to PyPI)
+
+```json
+{
+  "mcpServers": {
+    "argocd": {
+      "command": "uvx",
+      "args": ["argocd-mcp-server"],
+      "env": {
+        "ARGOCD_BASE_URL": "https://your-argocd-server.com",
+        "ARGOCD_ACCESS_TOKEN": "your-access-token-here",
+        "ARGOCD_INSECURE": "true"
+      }
+    }
+  }
+}
+```
+
+**Notes**:
+- **Use Option 1 (Python wrapper)** - Most compatible with all MCP frameworks
+- Only include `"ARGOCD_INSECURE": "true"` if your ArgoCD server uses self-signed certificates
+- The wrapper adds minimal overhead (~1-2ms) while maintaining Rust performance
+- **Always use absolute paths** - Replace `/absolute/path/to/` with your actual path
 
 ## Development
 
@@ -709,14 +828,18 @@ cargo test test_list_all_applications
 ```
 argocd-mcp-server/
 ├── src/
-│   ├── main.rs              # Entry point with stdio transport
-│   ├── lib.rs               # Library exports
-│   ├── argocd_client.rs     # ArgoCD API client
-│   ├── models.rs            # Data models (optimized for context efficiency)
-│   └── tools.rs             # MCP tool implementations
+│   ├── main.rs                  # Entry point with stdio transport
+│   ├── lib.rs                   # Library exports
+│   ├── argocd_client.rs         # ArgoCD API client
+│   ├── models.rs                # Data models (optimized for context efficiency)
+│   └── tools.rs                 # MCP tool implementations
 ├── tests/
-│   └── integration_test.rs  # Integration tests with mock server
-├── Cargo.toml
+│   └── integration_test.rs      # Integration tests with mock server
+├── argocd_mcp_server.py         # Python wrapper (RECOMMENDED)
+├── setup.py                     # Python package setup
+├── pyproject.toml               # Python project configuration
+├── Cargo.toml                   # Rust package configuration
+├── Cargo.lock                   # Rust dependency lock
 └── README.md
 ```
 
