@@ -5,7 +5,8 @@ use crate::models::{
     Application, ApplicationList, ApplicationSummaryOutput, ApplicationDetailOutput,
     ApplicationServerSideDiffResponse, ServerSideDiffSummary, ApplicationTree, ResourceTreeSummary,
     EventList, EventListSummary, LogEntry, PodLogsSummary, ManifestResponse, ManifestSummary,
-    RevisionMetadata, RevisionMetadataSummary
+    RevisionMetadata, RevisionMetadataSummary,
+    ApplicationSyncWindowsResponse, ApplicationSyncWindowsSummary
 };
 
 /// ArgoCD API client with robust error handling
@@ -35,8 +36,25 @@ impl ArgocdClient {
             anyhow::bail!("access_token cannot be empty");
         }
 
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+        // Check if we should skip TLS verification (useful for self-signed certs)
+        let insecure_env = std::env::var("ARGOCD_INSECURE")
+            .unwrap_or_else(|_| "false".to_string());
+        let skip_tls_verify = insecure_env.to_lowercase() == "true";
+
+        tracing::info!("ARGOCD_INSECURE environment variable: {:?}", insecure_env);
+        tracing::info!("Skip TLS verification: {}", skip_tls_verify);
+
+        let mut client_builder = Client::builder()
+            .timeout(std::time::Duration::from_secs(30));
+
+        if skip_tls_verify {
+            tracing::warn!("TLS certificate verification is DISABLED (ARGOCD_INSECURE=true)");
+            client_builder = client_builder.danger_accept_invalid_certs(true);
+        } else {
+            tracing::info!("TLS certificate verification is ENABLED");
+        }
+
+        let client = client_builder
             .build()
             .context("Failed to create HTTP client")?;
 
@@ -219,7 +237,8 @@ impl ArgocdClient {
             url.push_str(&params.join("&"));
         }
 
-        tracing::debug!("Fetching application names from: {}", url);
+        tracing::info!("Fetching application names from: {}", url);
+        tracing::info!("ARGOCD_INSECURE env var: {:?}", std::env::var("ARGOCD_INSECURE"));
 
         let response = self.client
             .get(&url)
@@ -227,7 +246,7 @@ impl ArgocdClient {
             .header("Accept", "application/json")
             .send()
             .await
-            .context("Failed to send request to ArgoCD API")?;
+            .map_err(|e| anyhow::anyhow!("Failed to send request to ArgoCD API ({}): {}", url, e))?;
 
         let status = response.status();
 
@@ -264,6 +283,10 @@ impl ArgocdClient {
 
     /// Perform server-side diff calculation using dry-run apply
     /// Returns optimized summaries to save context window
+    ///
+    /// **Note**: This endpoint may not be available in all ArgoCD versions.
+    /// If you receive a 404 error, your ArgoCD instance may not support this feature.
+    /// This feature typically requires ArgoCD v2.5+ with Server-Side Apply support.
     pub async fn server_side_diff(
         &self,
         app_name: String,
@@ -749,8 +772,23 @@ impl ArgocdClient {
             }
         }
 
-        let event_list = response.json::<EventList>().await
-            .context("Failed to parse EventList response")?;
+        // Get the response text first for better error handling
+        let response_text = response.text().await
+            .context("Failed to read response body")?;
+
+        // Try to parse the response
+        let event_list: EventList = match serde_json::from_str(&response_text) {
+            Ok(list) => list,
+            Err(e) => {
+                // Log the actual response for debugging
+                tracing::error!("Failed to parse EventList response. Error: {}, Response body: {}", e, response_text);
+                // Return empty event list if parsing fails
+                EventList {
+                    metadata: None,
+                    items: Vec::new(),
+                }
+            }
+        };
 
         // Convert to optimized summary
         Ok(EventListSummary::from(event_list))
@@ -1235,6 +1273,126 @@ impl ArgocdClient {
             .context("Failed to parse RevisionMetadata response")?;
 
         Ok(metadata)
+    }
+
+    /// Get application sync windows
+    /// Returns optimized summary with sync window information
+    ///
+    /// **Note**: This endpoint may not be available in all ArgoCD versions.
+    /// If you receive a 404 error, your ArgoCD instance may not support application-level
+    /// sync windows, or sync windows may need to be configured at the project level.
+    /// This feature typically requires ArgoCD v2.6+.
+    pub async fn get_application_sync_windows(
+        &self,
+        application_name: String,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationSyncWindowsSummary> {
+        let mut url = format!("{}/api/v1/applications/{}/sync-windows",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(&ans)));
+        }
+        if let Some(p) = project {
+            params.push(format!("project={}", urlencoding::encode(&p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Fetching application sync windows from: {}", url);
+
+        let response = self.client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            // Try to parse as JSON error
+            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
+                let msg = if !err.message.is_empty() {
+                    err.message
+                } else if !err.error.is_empty() {
+                    err.error
+                } else {
+                    error_text
+                };
+                anyhow::bail!("ArgoCD API error ({}): {}", status, msg);
+            } else {
+                anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+            }
+        }
+
+        let sync_windows_response = response.json::<ApplicationSyncWindowsResponse>().await
+            .context("Failed to parse ApplicationSyncWindowsResponse")?;
+
+        // Convert to optimized summary
+        Ok(ApplicationSyncWindowsSummary::from(sync_windows_response))
+    }
+
+    /// Get full application sync windows (not optimized)
+    /// This method is part of the public API and used in tests
+    #[allow(dead_code)]
+    pub async fn get_application_sync_windows_full(
+        &self,
+        application_name: String,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationSyncWindowsResponse> {
+        let mut url = format!("{}/api/v1/applications/{}/sync-windows",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(&ans)));
+        }
+        if let Some(p) = project {
+            params.push(format!("project={}", urlencoding::encode(&p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Fetching application sync windows from: {}", url);
+
+        let response = self.client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+        }
+
+        let sync_windows_response = response.json::<ApplicationSyncWindowsResponse>().await
+            .context("Failed to parse ApplicationSyncWindowsResponse")?;
+
+        Ok(sync_windows_response)
     }
 }
 

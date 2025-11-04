@@ -1186,3 +1186,52 @@ impl From<RevisionMetadata> for RevisionMetadataSummary {
         }
     }
 }
+
+/// ApplicationSyncWindow represents a single sync window
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationSyncWindow {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>, // e.g., "allow", "deny"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>, // Cron schedule
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<String>, // e.g., "1h", "30m"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applications: Option<Vec<String>>, // List of application names
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespaces: Option<Vec<String>>, // List of namespaces
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clusters: Option<Vec<String>>, // List of cluster URLs
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manual_sync_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<String>, // RFC3339 format
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<String>, // RFC3339 format
+}
+
+/// ApplicationSyncWindowsResponse is the full response from the API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationSyncWindowsResponse {
+    #[serde(default)]
+    pub windows: Vec<ApplicationSyncWindow>,
+}
+
+/// Optimized summary for ApplicationSyncWindows output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationSyncWindowsSummary {
+    pub total_windows: usize,
+    pub windows: Vec<ApplicationSyncWindow>, // Keep full windows for now, can optimize later if needed
+}
+
+impl From<ApplicationSyncWindowsResponse> for ApplicationSyncWindowsSummary {
+    fn from(response: ApplicationSyncWindowsResponse) -> Self {
+        let total_windows = response.windows.len();
+        ApplicationSyncWindowsSummary {
+            total_windows,
+            windows: response.windows,
+        }
+    }
+}

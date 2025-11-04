@@ -5,10 +5,22 @@ A robust, optimized Model Context Protocol (MCP) server for ArgoCD, built with R
 ## Features
 
 - **Optimized Response Format**: Responses are optimized to minimize context window usage while providing essential information
-- **Robust Error Handling**: Comprehensive error handling with detailed error messages
-- **Complete Test Coverage**: Integration tests with mock ArgoCD API server
+- **Robust Error Handling**: Comprehensive error handling with detailed error messages and graceful degradation
+- **Complete Test Coverage**: 60+ integration tests with mock ArgoCD API server
 - **Stdio Transport**: Uses stdio transport for seamless integration with MCP clients
 - **Type-Safe**: Built with Rust for type safety and performance
+- **Version Compatibility**: Supports ArgoCD v1.0+ with documented requirements for advanced features
+
+## ArgoCD Version Compatibility
+
+| Feature | Minimum Version | Status |
+|---------|----------------|--------|
+| Core Tools (list, get, tree, logs, manifests, metadata) | ArgoCD v1.0+ | ✅ Fully Supported |
+| list_resource_events | ArgoCD v1.0+ | ✅ Fully Supported |
+| server_side_diff | ArgoCD v2.5+ | ⚠️ Version-Specific |
+| get_application_sync_windows | ArgoCD v2.6+ | ⚠️ Version-Specific |
+
+**Note**: Version-specific features will return a 404 error if your ArgoCD instance doesn't support them. This is expected behavior and documented in each tool's description.
 
 ## Tools
 
@@ -466,29 +478,162 @@ The tool automatically detects potential issues using these keywords:
 - Use `since_seconds` for time-scoped troubleshooting
 - Combine `filter` (server-side) with `errors_only` (client-side) for maximum efficiency
 
+### `revision_metadata`
+
+Get metadata (author, date, message, tags) for a specific revision of an ArgoCD application. Returns commit information including author, timestamp, commit message, associated Git tags, and signature verification status. Useful for tracking changes, auditing deployments, and understanding revision history.
+
+**Arguments:**
+- `application_name` (required): The application name
+- `revision` (required): Revision/commit hash
+- `app_namespace` (optional): Application namespace
+- `project` (optional): Project identifier
+- `source_index` (optional): Source index (for multi-source applications)
+- `version_id` (optional): Version ID from historical data (for multi-source applications)
+
+**Returns:**
+Optimized summary including:
+- Author and date of the revision
+- Short and full commit messages
+- Number of tags and associated tags
+- Signature status (signed/not signed) and summary
+
+**Use Cases:**
+- Track changes and audit deployments
+- Understand revision history and commit details
+- Verify commit authorship and integrity
+- Identify associated Git tags for a revision
+- Debug issues related to specific code versions
+
+**Example Output:**
+```
+Revision Metadata for application 'guestbook' at revision 'abc123def456'
+
+Author: John Doe <john.doe@example.com>
+Date: 2025-10-27T10:30:00Z
+
+Commit Message:
+  feat: Add new feature
+
+Full Message:
+  feat: Add new feature
+
+  This commit introduces a brand new feature to the application.
+
+Tags (2):
+  - v1.2.0
+  - release-candidate
+
+Signature Status: Valid signature
+```
+
+### `get_application_sync_windows`
+
+Get synchronization windows for an ArgoCD application. Returns a list of configured sync windows, including their schedule, duration, and affected applications/namespaces/clusters. Useful for understanding when an application can be synced or is blocked from syncing.
+
+**Arguments:**
+- `application_name` (required): The application name
+- `app_namespace` (optional): Application namespace
+- `project` (optional): Project identifier
+
+**Returns:**
+Optimized summary including:
+- Total number of sync windows
+- Details for each sync window:
+  - `kind`: Type of sync window (e.g., "allow", "deny")
+  - `schedule`: Cron schedule for the window
+  - `duration`: Duration of the window (e.g., "1h", "30m")
+  - `applications`: List of application names affected by the window
+  - `namespaces`: List of namespaces affected by the window
+  - `clusters`: List of cluster URLs affected by the window
+  - `manual_sync_enabled`: Whether manual sync is allowed during the window
+  - `start_time`: Start time of the window (RFC3339 format)
+  - `end_time`: End time of the window (RFC3339 format)
+
+**Use Cases:**
+- Determine when an application is allowed or denied to sync
+- Identify maintenance windows or blackout periods
+- Understand which applications, namespaces, or clusters are affected by specific sync policies
+- Verify manual synchronization permissions during a window
+
+**Example Output:**
+```
+Sync Windows for application 'my-app' (2 total):
+
+1. Kind: allow
+   Schedule: 0 0 * * *
+   Duration: 1h
+   Start Time: 2025-01-01T00:00:00Z
+   End Time: 2025-01-01T01:00:00Z
+   Manual Sync Enabled: true
+   Applications: guestbook, helm-app
+   Namespaces: default, staging
+   Clusters: https://kubernetes.default.svc
+
+2. Kind: deny
+   Schedule: 0 2 * * *
+   Duration: 30m
+   Start Time: 2025-01-01T02:00:00Z
+   End Time: 2025-01-01T02:30:00Z
+   Manual Sync Enabled: false
+   Applications: backend-api
+   Namespaces: backend-prod
+```
+
 ## Prerequisites
 
 - Rust 1.70 or later
 - ArgoCD server with API access
 - Valid ArgoCD access token
 
-## Installation
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd argocd-mcp-server
-
-# Build the project
-cargo build --release
-```
-
 ## Configuration
 
-The server requires two environment variables:
+The server requires the following environment variables:
+
+### Required Variables
 
 - `ARGOCD_BASE_URL`: The base URL of your ArgoCD server (e.g., `https://argocd.example.com`)
 - `ARGOCD_ACCESS_TOKEN`: Your ArgoCD API access token
+
+### Optional Variables
+
+- `ARGOCD_INSECURE` (optional): Set to `true` to skip TLS certificate verification (useful for self-signed certificates)
+- `ARGOCD_READ_ONLY` (optional): Set to `true` to enforce read-only mode (default: `false`)
+
+### Read-Only Mode
+
+The server supports a read-only mode that can be enabled by setting the `ARGOCD_READ_ONLY` environment variable to `true`. When enabled:
+
+- ✅ All current tools continue to work (all tools use GET requests only)
+- ✅ Server information displays "READ-ONLY MODE" indicator
+- ✅ Provides additional safety for production environments
+- ✅ Useful for audit/compliance requirements
+
+**Note**: All current tools in this MCP server only perform read operations (GET requests). The read-only mode is provided for:
+- Future-proofing when write operations are added
+- Explicit documentation of access level
+- Compliance and audit requirements
+- Enhanced security posture
+
+```bash
+# Enable read-only mode
+export ARGOCD_READ_ONLY=true
+
+# Disable read-only mode (default)
+export ARGOCD_READ_ONLY=false
+```
+
+### TLS/SSL Configuration
+
+If your ArgoCD server uses self-signed certificates or certificates that are not trusted by the system, you can disable TLS certificate verification:
+
+```bash
+export ARGOCD_INSECURE=true
+```
+
+**Security Warning**: Only use `ARGOCD_INSECURE=true` in development/testing environments or with internal ArgoCD servers. For production use, it's recommended to:
+- Use properly signed certificates from a trusted CA
+- Add your organization's CA certificate to the system trust store
+- Use `argocd login --insecure` only when absolutely necessary
 
 ### Getting an ArgoCD Access Token
 
@@ -523,9 +668,9 @@ You can test the server using the MCP Inspector:
 npx @modelcontextprotocol/inspector cargo run --release
 ```
 
-### Integration with Claude Desktop
+### Integration with Claude Desktop / Claude Code
 
-Add to your Claude Desktop configuration (`claude_desktop_config.json`):
+Add to your Claude Desktop/Code configuration (`.mcp.json` or `claude_desktop_config.json`):
 
 ```json
 {
@@ -534,12 +679,15 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
       "command": "/path/to/argocd-mcp-server/target/release/argocd-mcp-server",
       "env": {
         "ARGOCD_BASE_URL": "https://your-argocd-server.com",
-        "ARGOCD_ACCESS_TOKEN": "your-access-token-here"
+        "ARGOCD_ACCESS_TOKEN": "your-access-token-here",
+        "ARGOCD_INSECURE": "true"
       }
     }
   }
 }
 ```
+
+**Note**: Only include `"ARGOCD_INSECURE": "true"` if your ArgoCD server uses self-signed certificates. Remove this line for production environments with properly signed certificates.
 
 ## Development
 
@@ -636,6 +784,12 @@ This server is compatible with ArgoCD API v1alpha1. It has been tested with:
    - Check network connectivity to ArgoCD server
    - Verify the base URL is correct and accessible
 
+4. **TLS/SSL certificate errors**
+   - Error: "Failed to send request to ArgoCD API"
+   - Common cause: Self-signed or untrusted certificates
+   - Solution: Set `ARGOCD_INSECURE=true` in your environment configuration
+   - Alternative: Add your organization's CA certificate to the system trust store
+
 ### Debug Logging
 
 Enable debug logging:
@@ -668,10 +822,6 @@ Contributions are welcome! Please ensure:
 - All tests pass (`cargo test`)
 - Code is formatted (`cargo fmt`)
 - No clippy warnings (`cargo clippy`)
-
-## License
-
-[Add your license here]
 
 ## Acknowledgments
 

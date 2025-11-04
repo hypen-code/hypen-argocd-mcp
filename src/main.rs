@@ -23,11 +23,18 @@ async fn main() -> Result<()> {
         .context("ARGOCD_BASE_URL environment variable must be set")?;
     let access_token = env::var("ARGOCD_ACCESS_TOKEN")
         .context("ARGOCD_ACCESS_TOKEN environment variable must be set")?;
+    let read_only = env::var("ARGOCD_READ_ONLY")
+        .ok()
+        .and_then(|v| v.parse::<bool>().ok())
+        .unwrap_or(false);
 
     tracing::info!("Connecting to ArgoCD at: {}", base_url);
+    if read_only {
+        tracing::info!("Running in READ-ONLY mode - only GET requests allowed");
+    }
 
-    // Create handler and initialize with credentials
-    let handler = ArgocdMcpHandler::new();
+    // Create handler with read-only mode from environment
+    let handler = ArgocdMcpHandler::from_env();
     handler.initialize(base_url, access_token).await
         .context("Failed to initialize ArgoCD client")?;
 

@@ -221,20 +221,51 @@ pub struct RevisionMetadataArgs {
     pub version_id: Option<i32>,
 }
 
+/// Arguments for getting application sync windows
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct GetApplicationSyncWindowsArgs {
+    /// Application name (required)
+    pub application_name: String,
+    /// Application namespace
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_namespace: Option<String>,
+    /// Project identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
 /// MCP Server handler for ArgoCD operations
 #[derive(Clone)]
 pub struct ArgocdMcpHandler {
     client: Arc<RwLock<Option<ArgocdClient>>>,
     tool_router: ToolRouter<Self>,
+    read_only: bool,
 }
 
 #[tool_router]
 impl ArgocdMcpHandler {
+    /// Create a new handler with optional read-only mode
     pub fn new() -> Self {
+        Self::with_read_only(false)
+    }
+
+    /// Create a new handler with explicit read-only mode
+    pub fn with_read_only(read_only: bool) -> Self {
         Self {
             client: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
+            read_only,
         }
+    }
+
+    /// Create a new handler from environment variables
+    /// Reads ARGOCD_READ_ONLY environment variable (true/false, default: false)
+    pub fn from_env() -> Self {
+        let read_only = std::env::var("ARGOCD_READ_ONLY")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+        Self::with_read_only(read_only)
     }
 
     /// Initialize the client with credentials
@@ -364,7 +395,7 @@ impl ArgocdMcpHandler {
     }
 
     /// Perform server-side diff calculation using dry-run apply
-    #[tool(description = "Perform server-side diff calculation for an ArgoCD application using dry-run apply. This executes a Server-Side Apply operation in dryrun mode and compares the predicted state with the live state. Returns a list of resources with their diff status, showing which resources have differences between the live and target state.")]
+    #[tool(description = "Perform server-side diff calculation for an ArgoCD application using dry-run apply. This executes a Server-Side Apply operation in dryrun mode and compares the predicted state with the live state. Returns a list of resources with their diff status, showing which resources have differences between the live and target state. NOTE: This feature requires ArgoCD v2.5+ with Server-Side Apply support. If unavailable, a 404 error will be returned.")]
     async fn server_side_diff(
         &self,
         Parameters(args): Parameters<ServerSideDiffArgs>,
@@ -670,7 +701,7 @@ impl ArgocdMcpHandler {
     }
 
     /// List resource events for an ArgoCD application
-    #[tool(description = "List Kubernetes events for an ArgoCD application or specific resource within an application. Returns event details including type (Normal/Warning), reason, message, timestamps, and involved objects. Use filters to narrow results by resource name, namespace, or UID. Events provide insights into application lifecycle, deployments, and issues.")]
+    #[tool(description = "List Kubernetes events for an ArgoCD application or specific resource within an application. Returns event details including type (Normal/Warning), reason, message, timestamps, and involved objects. Use filters to narrow results by resource name, namespace, or UID. Events provide insights into application lifecycle, deployments, and issues. NOTE: If no events are found or the response format is unexpected, an empty list will be returned with appropriate logging.")]
     async fn list_resource_events(
         &self,
         Parameters(args): Parameters<ListResourceEventsArgs>,
@@ -1200,11 +1231,111 @@ impl ArgocdMcpHandler {
             Content::text(format!("\n--- JSON Data ---\n{}", json_data)),
         ]))
     }
+
+    /// Get application sync windows
+    #[tool(description = "Get synchronization windows for an ArgoCD application. Returns a list of configured sync windows, including their schedule, duration, and affected applications/namespaces/clusters. Useful for understanding when an application can be synced or is blocked from syncing. NOTE: This feature requires ArgoCD v2.6+. If unavailable, a 404 error will be returned.")]
+    async fn get_application_sync_windows(
+        &self,
+        Parameters(args): Parameters<GetApplicationSyncWindowsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        // Check if client is initialized
+        let client_guard = self.client.read().await;
+        let client = client_guard.as_ref().ok_or_else(|| {
+            McpError::internal_error(
+                "ArgoCD client not initialized. Please ensure ARGOCD_BASE_URL and ARGOCD_ACCESS_TOKEN environment variables are set.",
+                None,
+            )
+        })?;
+
+        // Call ArgoCD API
+        let summary = client
+            .get_application_sync_windows(
+                args.application_name.clone(),
+                args.app_namespace,
+                args.project,
+            )
+            .await
+            .map_err(|e| McpError::internal_error(
+                format!("Failed to get application sync windows: {}", e),
+                None
+            ))?;
+
+        if summary.total_windows == 0 {
+            Ok(CallToolResult::success(vec![Content::text(
+                format!("No sync windows found for application '{}'", args.application_name),
+            )]))
+        } else {
+            // Format as readable text
+            let mut output = format!(
+                "Sync Windows for application '{}' ({} total):\n\n",
+                args.application_name,
+                summary.total_windows
+            );
+
+            for (idx, window) in summary.windows.iter().enumerate() {
+                output.push_str(&format!("{}. Kind: {}\n", idx + 1, window.kind.as_deref().unwrap_or("Unknown")));
+                if let Some(schedule) = &window.schedule {
+                    output.push_str(&format!("   Schedule: {}\n", schedule));
+                }
+                if let Some(duration) = &window.duration {
+                    output.push_str(&format!("   Duration: {}\n", duration));
+                }
+                if let Some(start_time) = &window.start_time {
+                    output.push_str(&format!("   Start Time: {}\n", start_time));
+                }
+                if let Some(end_time) = &window.end_time {
+                    output.push_str(&format!("   End Time: {}\n", end_time));
+                }
+                if let Some(manual_sync_enabled) = window.manual_sync_enabled {
+                    output.push_str(&format!("   Manual Sync Enabled: {}\n", manual_sync_enabled));
+                }
+                if let Some(apps) = &window.applications {
+                    if !apps.is_empty() {
+                        output.push_str(&format!("   Applications: {}\n", apps.join(", ")));
+                    }
+                }
+                if let Some(namespaces) = &window.namespaces {
+                    if !namespaces.is_empty() {
+                        output.push_str(&format!("   Namespaces: {}\n", namespaces.join(", ")));
+                    }
+                }
+                if let Some(clusters) = &window.clusters {
+                    if !clusters.is_empty() {
+                        output.push_str(&format!("   Clusters: {}\n", clusters.join(", ")));
+                    }
+                }
+                output.push('\n');
+            }
+
+            // Also include JSON for structured consumption
+            let json_data = serde_json::to_string_pretty(&summary)
+                .map_err(|e| McpError::internal_error(
+                    format!("Failed to serialize response: {}", e),
+                    None
+                ))?;
+
+            Ok(CallToolResult::success(vec![
+                Content::text(output),
+                Content::text(format!("\n--- JSON Data ---\n{}", json_data)),
+            ]))
+        }
+    }
 }
 
 #[tool_handler]
 impl ServerHandler for ArgocdMcpHandler {
     fn get_info(&self) -> ServerInfo {
+        let mode_info = if self.read_only {
+            " [READ-ONLY MODE: All tools are read-only GET requests only]"
+        } else {
+            ""
+        };
+
+        let instructions = format!(
+            "ArgoCD MCP Server{} - provides tools to interact with ArgoCD API. Currently supports: list_applications (list and filter ArgoCD applications with full details), list_application_names (get only application names for efficient name lookup and typo correction), get_application (get detailed information about a specific application by name), server_side_diff (perform server-side diff calculation using dry-run apply to compare live and target states), resource_tree (get hierarchical resource tree view with health status and resource details), list_resource_events (list Kubernetes events for applications or specific resources with filtering capabilities), pod_logs (get container logs with intelligent error/warning filtering and log level analysis), get_manifests (get Kubernetes manifests with parsing and analysis), revision_metadata (get metadata for a specific revision including author, date, message, tags, and signature status), get_application_sync_windows (get synchronization windows for an application). Set ARGOCD_BASE_URL and ARGOCD_ACCESS_TOKEN environment variables before starting. Optional: Set ARGOCD_READ_ONLY=true to enforce read-only mode (currently all tools are read-only GET requests).",
+            mode_info
+        );
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities::builder()
@@ -1217,7 +1348,7 @@ impl ServerHandler for ArgocdMcpHandler {
                 title: None,
                 website_url: None,
             },
-            instructions: Some("ArgoCD MCP Server - provides tools to interact with ArgoCD API. Currently supports: list_applications (list and filter ArgoCD applications with full details), list_application_names (get only application names for efficient name lookup and typo correction), get_application (get detailed information about a specific application by name), server_side_diff (perform server-side diff calculation using dry-run apply to compare live and target states), resource_tree (get hierarchical resource tree view with health status and resource details), list_resource_events (list Kubernetes events for applications or specific resources with filtering capabilities), pod_logs (get container logs with intelligent error/warning filtering and log level analysis), get_manifests (get Kubernetes manifests with parsing and analysis). Set ARGOCD_BASE_URL and ARGOCD_ACCESS_TOKEN environment variables before starting.".to_string()),
+            instructions: Some(instructions),
         }
     }
 }
