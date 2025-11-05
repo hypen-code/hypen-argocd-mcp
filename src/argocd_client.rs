@@ -1,13 +1,16 @@
+use crate::models::{
+    Application, ApplicationDetailOutput, ApplicationHistorySummary, ApplicationList,
+    ApplicationResourceResponse, ApplicationResourceSummary, ApplicationRollbackSummary,
+    ApplicationServerSideDiffResponse, ApplicationSummaryOutput, ApplicationSyncSummary,
+    ApplicationSyncWindowsResponse, ApplicationSyncWindowsSummary, ApplicationTree, EventList,
+    EventListSummary, LogEntry, ManifestResponse, ManifestSummary, PodLogsSummary,
+    RefreshApplicationSummary, ResourceTreeSummary, RetryStrategy, RevisionHistorySummary,
+    RevisionMetadata, RevisionMetadataSummary, ServerSideDiffSummary, SyncResource, SyncStrategy,
+    SyncStrategyApply, SyncStrategyHook,
+};
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
-use crate::models::{
-    Application, ApplicationList, ApplicationSummaryOutput, ApplicationDetailOutput,
-    ApplicationServerSideDiffResponse, ServerSideDiffSummary, ApplicationTree, ResourceTreeSummary,
-    EventList, EventListSummary, LogEntry, PodLogsSummary, ManifestResponse, ManifestSummary,
-    RevisionMetadata, RevisionMetadataSummary,
-    ApplicationSyncWindowsResponse, ApplicationSyncWindowsSummary
-};
 
 /// ArgoCD API client with robust error handling
 #[derive(Clone)]
@@ -37,15 +40,13 @@ impl ArgocdClient {
         }
 
         // Check if we should skip TLS verification (useful for self-signed certs)
-        let insecure_env = std::env::var("ARGOCD_INSECURE")
-            .unwrap_or_else(|_| "false".to_string());
+        let insecure_env = std::env::var("ARGOCD_INSECURE").unwrap_or_else(|_| "false".to_string());
         let skip_tls_verify = insecure_env.to_lowercase() == "true";
 
         tracing::info!("ARGOCD_INSECURE environment variable: {:?}", insecure_env);
         tracing::info!("Skip TLS verification: {}", skip_tls_verify);
 
-        let mut client_builder = Client::builder()
-            .timeout(std::time::Duration::from_secs(30));
+        let mut client_builder = Client::builder().timeout(std::time::Duration::from_secs(30));
 
         if skip_tls_verify {
             tracing::warn!("TLS certificate verification is DISABLED (ARGOCD_INSECURE=true)");
@@ -103,7 +104,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching applications from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -114,7 +116,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -132,11 +136,14 @@ impl ArgocdClient {
             }
         }
 
-        let app_list = response.json::<ApplicationList>().await
+        let app_list = response
+            .json::<ApplicationList>()
+            .await
             .context("Failed to parse ApplicationList response")?;
 
         // Convert to optimized summaries
-        let summaries = app_list.items
+        let summaries = app_list
+            .items
             .into_iter()
             .map(ApplicationSummaryOutput::from)
             .collect();
@@ -183,7 +190,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching applications from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -194,12 +202,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let app_list = response.json::<ApplicationList>().await
+        let app_list = response
+            .json::<ApplicationList>()
+            .await
             .context("Failed to parse ApplicationList response")?;
 
         Ok(app_list)
@@ -238,20 +250,28 @@ impl ArgocdClient {
         }
 
         tracing::info!("Fetching application names from: {}", url);
-        tracing::info!("ARGOCD_INSECURE env var: {:?}", std::env::var("ARGOCD_INSECURE"));
+        tracing::info!(
+            "ARGOCD_INSECURE env var: {:?}",
+            std::env::var("ARGOCD_INSECURE")
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to send request to ArgoCD API ({}): {}", url, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to send request to ArgoCD API ({}): {}", url, e)
+            })?;
 
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -269,11 +289,14 @@ impl ArgocdClient {
             }
         }
 
-        let app_list = response.json::<ApplicationList>().await
+        let app_list = response
+            .json::<ApplicationList>()
+            .await
             .context("Failed to parse ApplicationList response")?;
 
         // Extract only names
-        let names: Vec<String> = app_list.items
+        let names: Vec<String> = app_list
+            .items
             .into_iter()
             .filter_map(|app| app.metadata.map(|m| m.name))
             .collect();
@@ -294,7 +317,8 @@ impl ArgocdClient {
         project: Option<String>,
         target_manifests: Option<Vec<String>>,
     ) -> Result<Vec<ServerSideDiffSummary>> {
-        let mut url = format!("{}/api/v1/applications/{}/server-side-diff",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/server-side-diff",
             self.base_url,
             urlencoding::encode(&app_name)
         );
@@ -308,7 +332,10 @@ impl ArgocdClient {
         }
         if let Some(manifests) = target_manifests {
             for manifest in manifests {
-                params.push(format!("targetManifests={}", urlencoding::encode(&manifest)));
+                params.push(format!(
+                    "targetManifests={}",
+                    urlencoding::encode(&manifest)
+                ));
             }
         }
 
@@ -319,7 +346,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching server-side diff from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -330,7 +358,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -348,11 +378,14 @@ impl ArgocdClient {
             }
         }
 
-        let diff_response = response.json::<ApplicationServerSideDiffResponse>().await
+        let diff_response = response
+            .json::<ApplicationServerSideDiffResponse>()
+            .await
             .context("Failed to parse ApplicationServerSideDiffResponse")?;
 
         // Convert to optimized summaries
-        let summaries = diff_response.items
+        let summaries = diff_response
+            .items
             .into_iter()
             .map(ServerSideDiffSummary::from)
             .collect();
@@ -370,7 +403,8 @@ impl ArgocdClient {
         project: Option<String>,
         target_manifests: Option<Vec<String>>,
     ) -> Result<ApplicationServerSideDiffResponse> {
-        let mut url = format!("{}/api/v1/applications/{}/server-side-diff",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/server-side-diff",
             self.base_url,
             urlencoding::encode(&app_name)
         );
@@ -384,7 +418,10 @@ impl ArgocdClient {
         }
         if let Some(manifests) = target_manifests {
             for manifest in manifests {
-                params.push(format!("targetManifests={}", urlencoding::encode(&manifest)));
+                params.push(format!(
+                    "targetManifests={}",
+                    urlencoding::encode(&manifest)
+                ));
             }
         }
 
@@ -395,7 +432,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching server-side diff from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -406,12 +444,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let diff_response = response.json::<ApplicationServerSideDiffResponse>().await
+        let diff_response = response
+            .json::<ApplicationServerSideDiffResponse>()
+            .await
             .context("Failed to parse ApplicationServerSideDiffResponse")?;
 
         Ok(diff_response)
@@ -430,7 +472,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<ResourceTreeSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/resource-tree",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource-tree",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -465,7 +508,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching resource tree from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -476,7 +520,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -494,7 +540,9 @@ impl ArgocdClient {
             }
         }
 
-        let tree = response.json::<ApplicationTree>().await
+        let tree = response
+            .json::<ApplicationTree>()
+            .await
             .context("Failed to parse ApplicationTree response")?;
 
         // Convert to optimized summary
@@ -515,7 +563,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<ApplicationTree> {
-        let mut url = format!("{}/api/v1/applications/{}/resource-tree",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource-tree",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -550,7 +599,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching resource tree from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -561,12 +611,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let tree = response.json::<ApplicationTree>().await
+        let tree = response
+            .json::<ApplicationTree>()
+            .await
             .context("Failed to parse ApplicationTree response")?;
 
         Ok(tree)
@@ -582,7 +636,8 @@ impl ArgocdClient {
         refresh: Option<String>,
         resource_version: Option<String>,
     ) -> Result<ApplicationDetailOutput> {
-        let mut url = format!("{}/api/v1/applications/{}",
+        let mut url = format!(
+            "{}/api/v1/applications/{}",
             self.base_url,
             urlencoding::encode(&name)
         );
@@ -608,7 +663,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching application from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -619,7 +675,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -637,7 +695,9 @@ impl ArgocdClient {
             }
         }
 
-        let app = response.json::<Application>().await
+        let app = response
+            .json::<Application>()
+            .await
             .context("Failed to parse Application response")?;
 
         // Convert to optimized detail output
@@ -655,7 +715,8 @@ impl ArgocdClient {
         refresh: Option<String>,
         resource_version: Option<String>,
     ) -> Result<Application> {
-        let mut url = format!("{}/api/v1/applications/{}",
+        let mut url = format!(
+            "{}/api/v1/applications/{}",
             self.base_url,
             urlencoding::encode(&name)
         );
@@ -681,7 +742,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching application from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -692,12 +754,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let app = response.json::<Application>().await
+        let app = response
+            .json::<Application>()
+            .await
             .context("Failed to parse Application response")?;
 
         Ok(app)
@@ -714,7 +780,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<EventListSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/events",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/events",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -743,7 +810,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching resource events from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -754,7 +822,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -773,7 +843,9 @@ impl ArgocdClient {
         }
 
         // Get the response text first for better error handling
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .context("Failed to read response body")?;
 
         // Try to parse the response
@@ -781,7 +853,11 @@ impl ArgocdClient {
             Ok(list) => list,
             Err(e) => {
                 // Log the actual response for debugging
-                tracing::error!("Failed to parse EventList response. Error: {}, Response body: {}", e, response_text);
+                tracing::error!(
+                    "Failed to parse EventList response. Error: {}, Response body: {}",
+                    e,
+                    response_text
+                );
                 // Return empty event list if parsing fails
                 EventList {
                     metadata: None,
@@ -806,7 +882,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<EventList> {
-        let mut url = format!("{}/api/v1/applications/{}/events",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/events",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -835,7 +912,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching resource events from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -846,12 +924,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let event_list = response.json::<EventList>().await
+        let event_list = response
+            .json::<EventList>()
+            .await
             .context("Failed to parse EventList response")?;
 
         Ok(event_list)
@@ -876,7 +958,8 @@ impl ArgocdClient {
         project: Option<String>,
         filter_errors_only: bool,
     ) -> Result<PodLogsSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/logs",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/logs",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -929,7 +1012,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching pod logs from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -940,7 +1024,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -959,7 +1045,9 @@ impl ArgocdClient {
         }
 
         // The logs endpoint returns newline-delimited JSON (NDJSON/JSON streaming)
-        let text = response.text().await
+        let text = response
+            .text()
+            .await
             .context("Failed to read response body")?;
 
         // Parse NDJSON - each line is a JSON object with either "result" or "error"
@@ -1004,7 +1092,8 @@ impl ArgocdClient {
         source_positions: Option<Vec<i64>>,
         revisions: Option<Vec<String>>,
     ) -> Result<ManifestSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/manifests",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/manifests",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -1037,7 +1126,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching manifests from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1048,7 +1138,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -1066,7 +1158,9 @@ impl ArgocdClient {
             }
         }
 
-        let manifest_response = response.json::<ManifestResponse>().await
+        let manifest_response = response
+            .json::<ManifestResponse>()
+            .await
             .context("Failed to parse ManifestResponse")?;
 
         // Convert to optimized summary
@@ -1085,7 +1179,8 @@ impl ArgocdClient {
         source_positions: Option<Vec<i64>>,
         revisions: Option<Vec<String>>,
     ) -> Result<ManifestResponse> {
-        let mut url = format!("{}/api/v1/applications/{}/manifests",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/manifests",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -1118,7 +1213,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching manifests from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1129,12 +1225,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let manifest_response = response.json::<ManifestResponse>().await
+        let manifest_response = response
+            .json::<ManifestResponse>()
+            .await
             .context("Failed to parse ManifestResponse")?;
 
         Ok(manifest_response)
@@ -1151,7 +1251,8 @@ impl ArgocdClient {
         source_index: Option<i32>,
         version_id: Option<i32>,
     ) -> Result<RevisionMetadataSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/revisions/{}/metadata",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/revisions/{}/metadata",
             self.base_url,
             urlencoding::encode(&application_name),
             urlencoding::encode(&revision)
@@ -1178,7 +1279,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching revision metadata from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1189,7 +1291,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -1207,7 +1311,9 @@ impl ArgocdClient {
             }
         }
 
-        let metadata = response.json::<RevisionMetadata>().await
+        let metadata = response
+            .json::<RevisionMetadata>()
+            .await
             .context("Failed to parse RevisionMetadata response")?;
 
         // Convert to optimized summary
@@ -1226,7 +1332,8 @@ impl ArgocdClient {
         source_index: Option<i32>,
         version_id: Option<i32>,
     ) -> Result<RevisionMetadata> {
-        let mut url = format!("{}/api/v1/applications/{}/revisions/{}/metadata",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/revisions/{}/metadata",
             self.base_url,
             urlencoding::encode(&application_name),
             urlencoding::encode(&revision)
@@ -1253,7 +1360,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching revision metadata from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1264,12 +1372,16 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let metadata = response.json::<RevisionMetadata>().await
+        let metadata = response
+            .json::<RevisionMetadata>()
+            .await
             .context("Failed to parse RevisionMetadata response")?;
 
         Ok(metadata)
@@ -1288,7 +1400,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<ApplicationSyncWindowsSummary> {
-        let mut url = format!("{}/api/v1/applications/{}/sync-windows",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/sync-windows",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -1308,7 +1421,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching application sync windows from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1319,7 +1433,9 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             // Try to parse as JSON error
@@ -1337,7 +1453,9 @@ impl ArgocdClient {
             }
         }
 
-        let sync_windows_response = response.json::<ApplicationSyncWindowsResponse>().await
+        let sync_windows_response = response
+            .json::<ApplicationSyncWindowsResponse>()
+            .await
             .context("Failed to parse ApplicationSyncWindowsResponse")?;
 
         // Convert to optimized summary
@@ -1353,7 +1471,8 @@ impl ArgocdClient {
         app_namespace: Option<String>,
         project: Option<String>,
     ) -> Result<ApplicationSyncWindowsResponse> {
-        let mut url = format!("{}/api/v1/applications/{}/sync-windows",
+        let mut url = format!(
+            "{}/api/v1/applications/{}/sync-windows",
             self.base_url,
             urlencoding::encode(&application_name)
         );
@@ -1373,7 +1492,8 @@ impl ArgocdClient {
 
         tracing::debug!("Fetching application sync windows from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .header("Accept", "application/json")
@@ -1384,15 +1504,871 @@ impl ArgocdClient {
         let status = response.status();
 
         if !status.is_success() {
-            let error_text = response.text().await
+            let error_text = response
+                .text()
+                .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
         }
 
-        let sync_windows_response = response.json::<ApplicationSyncWindowsResponse>().await
+        let sync_windows_response = response
+            .json::<ApplicationSyncWindowsResponse>()
+            .await
             .context("Failed to parse ApplicationSyncWindowsResponse")?;
 
         Ok(sync_windows_response)
+    }
+
+    /// Rollback an application to a previous deployed version by History ID
+    /// Returns optimized summary to save context window
+    pub async fn rollback_application(
+        &self,
+        name: String,
+        id: i64,
+        dry_run: Option<bool>,
+        prune: Option<bool>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationRollbackSummary> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/rollback",
+            self.base_url,
+            urlencoding::encode(&name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Rolling back application at: {}", url);
+
+        // Build request body
+        let request_body = serde_json::json!({
+            "name": name,
+            "id": id,
+            "dryRun": dry_run.unwrap_or(false),
+            "prune": prune.unwrap_or(false),
+            "appNamespace": app_namespace,
+            "project": project,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            // Try to parse as JSON error
+            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
+                let msg = if !err.message.is_empty() {
+                    err.message
+                } else if !err.error.is_empty() {
+                    err.error
+                } else {
+                    error_text
+                };
+                anyhow::bail!("ArgoCD API error ({}): {}", status, msg);
+            } else {
+                anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+            }
+        }
+
+        let app = response
+            .json::<Application>()
+            .await
+            .context("Failed to parse Application response")?;
+
+        // Convert to optimized summary
+        Ok(ApplicationRollbackSummary::from_application(
+            app,
+            id,
+            dry_run.unwrap_or(false),
+            prune.unwrap_or(false),
+        ))
+    }
+
+    /// Rollback an application (returns full Application object)
+    /// This method is part of the public API and used in tests
+    #[allow(dead_code)]
+    pub async fn rollback_application_full(
+        &self,
+        name: String,
+        id: i64,
+        dry_run: Option<bool>,
+        prune: Option<bool>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<Application> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/rollback",
+            self.base_url,
+            urlencoding::encode(&name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Rolling back application at: {}", url);
+
+        // Build request body
+        let request_body = serde_json::json!({
+            "name": name,
+            "id": id,
+            "dryRun": dry_run.unwrap_or(false),
+            "prune": prune.unwrap_or(false),
+            "appNamespace": app_namespace,
+            "project": project,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+        }
+
+        let app = response
+            .json::<Application>()
+            .await
+            .context("Failed to parse Application response")?;
+
+        Ok(app)
+    }
+
+    /// Sync an application to its target state
+    /// Returns optimized summary to save context window
+    #[allow(clippy::too_many_arguments)]
+    pub async fn sync_application(
+        &self,
+        name: String,
+        revision: Option<String>,
+        dry_run: Option<bool>,
+        prune: Option<bool>,
+        force: Option<bool>,
+        resources: Option<Vec<SyncResource>>,
+        sync_options: Option<Vec<String>>,
+        retry: Option<RetryStrategy>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationSyncSummary> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/sync",
+            self.base_url,
+            urlencoding::encode(&name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Syncing application at: {}", url);
+
+        // Build strategy
+        let strategy = if let Some(true) = force {
+            Some(SyncStrategy {
+                apply: Some(SyncStrategyApply { force: Some(true) }),
+                hook: Some(SyncStrategyHook { force: Some(true) }),
+            })
+        } else {
+            None
+        };
+
+        // Build request body
+        let request_body = serde_json::json!({
+            "name": name,
+            "revision": revision,
+            "dryRun": dry_run.unwrap_or(false),
+            "prune": prune.unwrap_or(false),
+            "strategy": strategy,
+            "resources": resources,
+            "syncOptions": sync_options,
+            "retry": retry,
+            "appNamespace": app_namespace,
+            "project": project,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            // Try to parse as JSON error
+            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
+                let msg = if !err.message.is_empty() {
+                    err.message
+                } else if !err.error.is_empty() {
+                    err.error
+                } else {
+                    error_text
+                };
+                anyhow::bail!("ArgoCD API error ({}): {}", status, msg);
+            } else {
+                anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+            }
+        }
+
+        let app = response
+            .json::<Application>()
+            .await
+            .context("Failed to parse Application response")?;
+
+        // Convert to optimized summary
+        Ok(ApplicationSyncSummary::from_application(
+            app,
+            dry_run.unwrap_or(false),
+            prune.unwrap_or(false),
+            force.unwrap_or(false),
+            sync_options.unwrap_or_default(),
+            resources.as_ref().map(|r| r.len()),
+        ))
+    }
+
+    /// Sync an application (returns full Application object)
+    /// This method is part of the public API and used in tests
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn sync_application_full(
+        &self,
+        name: String,
+        revision: Option<String>,
+        dry_run: Option<bool>,
+        prune: Option<bool>,
+        force: Option<bool>,
+        resources: Option<Vec<SyncResource>>,
+        sync_options: Option<Vec<String>>,
+        retry: Option<RetryStrategy>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<Application> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/sync",
+            self.base_url,
+            urlencoding::encode(&name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Syncing application at: {}", url);
+
+        // Build strategy
+        let strategy = if let Some(true) = force {
+            Some(SyncStrategy {
+                apply: Some(SyncStrategyApply { force: Some(true) }),
+                hook: Some(SyncStrategyHook { force: Some(true) }),
+            })
+        } else {
+            None
+        };
+
+        // Build request body
+        let request_body = serde_json::json!({
+            "name": name,
+            "revision": revision,
+            "dryRun": dry_run.unwrap_or(false),
+            "prune": prune.unwrap_or(false),
+            "strategy": strategy,
+            "resources": resources,
+            "syncOptions": sync_options,
+            "retry": retry,
+            "appNamespace": app_namespace,
+            "project": project,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+        }
+
+        let app = response
+            .json::<Application>()
+            .await
+            .context("Failed to parse Application response")?;
+
+        Ok(app)
+    }
+
+    /// Get a specific resource from an ArgoCD application
+    /// Returns optimized summary to save context window
+    pub async fn get_resource(
+        &self,
+        application_name: String,
+        namespace: Option<String>,
+        resource_name: String,
+        version: String,
+        group: Option<String>,
+        kind: String,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationResourceSummary> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ns) = &namespace {
+            params.push(format!("namespace={}", urlencoding::encode(ns)));
+        }
+        params.push(format!("resourceName={}", urlencoding::encode(&resource_name)));
+        params.push(format!("version={}", urlencoding::encode(&version)));
+        if let Some(g) = &group {
+            params.push(format!("group={}", urlencoding::encode(g)));
+        }
+        params.push(format!("kind={}", urlencoding::encode(&kind)));
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Fetching resource from: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            // Try to parse as JSON error
+            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
+                let msg = if !err.message.is_empty() {
+                    err.message
+                } else if !err.error.is_empty() {
+                    err.error
+                } else {
+                    error_text
+                };
+                anyhow::bail!("ArgoCD API error ({}): {}", status, msg);
+            } else {
+                anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+            }
+        }
+
+        let resource_response = response
+            .json::<ApplicationResourceResponse>()
+            .await
+            .context("Failed to parse ApplicationResourceResponse")?;
+
+        // Convert to optimized summary
+        let manifest = resource_response.manifest.unwrap_or_default();
+        Ok(ApplicationResourceSummary::from_manifest(
+            application_name,
+            kind,
+            resource_name,
+            namespace,
+            version,
+            group,
+            manifest,
+        ))
+    }
+
+    /// Get full resource response (not optimized)
+    /// This method is part of the public API and used in tests
+    #[allow(dead_code)]
+    pub async fn get_resource_full(
+        &self,
+        application_name: String,
+        namespace: Option<String>,
+        resource_name: String,
+        version: String,
+        group: Option<String>,
+        kind: String,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationResourceResponse> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ns) = &namespace {
+            params.push(format!("namespace={}", urlencoding::encode(ns)));
+        }
+        params.push(format!("resourceName={}", urlencoding::encode(&resource_name)));
+        params.push(format!("version={}", urlencoding::encode(&version)));
+        if let Some(g) = &group {
+            params.push(format!("group={}", urlencoding::encode(g)));
+        }
+        params.push(format!("kind={}", urlencoding::encode(&kind)));
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Fetching resource from: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+        }
+
+        let resource_response = response
+            .json::<ApplicationResourceResponse>()
+            .await
+            .context("Failed to parse ApplicationResourceResponse")?;
+
+        Ok(resource_response)
+    }
+
+    /// Patch a specific resource in an ArgoCD application
+    /// Returns optimized summary to save context window
+    #[allow(clippy::too_many_arguments)]
+    pub async fn patch_resource(
+        &self,
+        application_name: String,
+        namespace: Option<String>,
+        resource_name: String,
+        version: String,
+        group: Option<String>,
+        kind: String,
+        patch: String,
+        patch_type: Option<String>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationResourceSummary> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ns) = &namespace {
+            params.push(format!("namespace={}", urlencoding::encode(ns)));
+        }
+        params.push(format!("resourceName={}", urlencoding::encode(&resource_name)));
+        params.push(format!("version={}", urlencoding::encode(&version)));
+        if let Some(g) = &group {
+            params.push(format!("group={}", urlencoding::encode(g)));
+        }
+        params.push(format!("kind={}", urlencoding::encode(&kind)));
+        if let Some(pt) = &patch_type {
+            params.push(format!("patchType={}", urlencoding::encode(pt)));
+        }
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Patching resource at: {}", url);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(patch.clone())
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            // Try to parse as JSON error
+            if let Ok(err) = serde_json::from_str::<ErrorResponse>(&error_text) {
+                let msg = if !err.message.is_empty() {
+                    err.message
+                } else if !err.error.is_empty() {
+                    err.error
+                } else {
+                    error_text
+                };
+                anyhow::bail!("ArgoCD API error ({}): {}", status, msg);
+            } else {
+                anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+            }
+        }
+
+        let resource_response = response
+            .json::<ApplicationResourceResponse>()
+            .await
+            .context("Failed to parse ApplicationResourceResponse")?;
+
+        // Convert to optimized summary
+        let manifest = resource_response.manifest.unwrap_or_default();
+        Ok(ApplicationResourceSummary::from_manifest(
+            application_name,
+            kind,
+            resource_name,
+            namespace,
+            version,
+            group,
+            manifest,
+        ))
+    }
+
+    /// Patch resource (returns full ApplicationResourceResponse)
+    /// This method is part of the public API and used in tests
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn patch_resource_full(
+        &self,
+        application_name: String,
+        namespace: Option<String>,
+        resource_name: String,
+        version: String,
+        group: Option<String>,
+        kind: String,
+        patch: String,
+        patch_type: Option<String>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationResourceResponse> {
+        let mut url = format!(
+            "{}/api/v1/applications/{}/resource",
+            self.base_url,
+            urlencoding::encode(&application_name)
+        );
+        let mut params = Vec::new();
+
+        if let Some(ns) = &namespace {
+            params.push(format!("namespace={}", urlencoding::encode(ns)));
+        }
+        params.push(format!("resourceName={}", urlencoding::encode(&resource_name)));
+        params.push(format!("version={}", urlencoding::encode(&version)));
+        if let Some(g) = &group {
+            params.push(format!("group={}", urlencoding::encode(g)));
+        }
+        params.push(format!("kind={}", urlencoding::encode(&kind)));
+        if let Some(pt) = &patch_type {
+            params.push(format!("patchType={}", urlencoding::encode(pt)));
+        }
+        if let Some(ans) = &app_namespace {
+            params.push(format!("appNamespace={}", urlencoding::encode(ans)));
+        }
+        if let Some(p) = &project {
+            params.push(format!("project={}", urlencoding::encode(p)));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        tracing::debug!("Patching resource at: {}", url);
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(patch)
+            .send()
+            .await
+            .context("Failed to send request to ArgoCD API")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            anyhow::bail!("ArgoCD API error ({}): {}", status, error_text);
+        }
+
+        let resource_response = response
+            .json::<ApplicationResourceResponse>()
+            .await
+            .context("Failed to parse ApplicationResourceResponse")?;
+
+        Ok(resource_response)
+    }
+
+    /// Get application deployment history
+    /// Returns optimized summary to save context window
+    pub async fn get_application_history(
+        &self,
+        application_name: String,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<ApplicationHistorySummary> {
+        // Get the full application to access history
+        let app = self
+            .get_application_full(application_name.clone(), app_namespace, project, None, None)
+            .await?;
+
+        // Extract history from application status
+        let history = app
+            .status
+            .and_then(|status| status.history)
+            .unwrap_or_default();
+
+        // Convert to optimized summaries and sort by ID descending (newest first)
+        let mut entries: Vec<RevisionHistorySummary> = history
+            .into_iter()
+            .map(RevisionHistorySummary::from_revision_history)
+            .collect();
+
+        // Sort by ID descending (newest first)
+        entries.sort_by(|a, b| b.id.cmp(&a.id));
+
+        let total_entries = entries.len();
+
+        Ok(ApplicationHistorySummary {
+            application_name,
+            total_entries,
+            entries,
+        })
+    }
+
+    /// Refresh an application from Git repository
+    /// Returns summary showing before/after state and what changed
+    pub async fn refresh_application(
+        &self,
+        application_name: String,
+        refresh_type: Option<String>,
+        app_namespace: Option<String>,
+        project: Option<String>,
+    ) -> Result<RefreshApplicationSummary> {
+        // Get application state BEFORE refresh
+        let app_before = self
+            .get_application_full(
+                application_name.clone(),
+                app_namespace.clone(),
+                project.clone(),
+                None,
+                None,
+            )
+            .await?;
+
+        // Extract before state
+        let sync_status_before = app_before
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .map(|sync| sync.status.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let health_status_before = app_before
+            .status
+            .as_ref()
+            .and_then(|s| s.health.as_ref())
+            .map(|health| health.status.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let sync_revision_before = app_before
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .and_then(|sync| sync.revision.clone());
+
+        // Get application WITH refresh parameter
+        let refresh_param = refresh_type.clone().or_else(|| Some("hard".to_string()));
+        let app_after = self
+            .get_application_full(
+                application_name.clone(),
+                app_namespace.clone(),
+                project.clone(),
+                refresh_param.clone(),
+                None,
+            )
+            .await?;
+
+        // Extract after state
+        let sync_status_after = app_after
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .map(|sync| sync.status.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let health_status_after = app_after
+            .status
+            .as_ref()
+            .and_then(|s| s.health.as_ref())
+            .map(|health| health.status.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let sync_revision_after = app_after
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .and_then(|sync| sync.revision.clone());
+
+        // Extract source info
+        let (repo_url, target_revision) = if let Some(spec) = &app_after.spec {
+            if let Some(source) = &spec.source {
+                (Some(source.repo_url.clone()), source.target_revision.clone())
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+        // Calculate what changed
+        let sync_status_changed = sync_status_before != sync_status_after;
+        let health_status_changed = health_status_before != health_status_after;
+        let revision_changed = sync_revision_before != sync_revision_after;
+
+        Ok(RefreshApplicationSummary {
+            application_name,
+            refresh_type: refresh_param.unwrap_or_else(|| "hard".to_string()),
+            sync_status_before,
+            sync_status_after,
+            health_status_before,
+            health_status_after,
+            sync_revision_before,
+            sync_revision_after,
+            sync_status_changed,
+            health_status_changed,
+            revision_changed,
+            repo_url: repo_url.or_else(|| Some("Unknown".to_string())),
+            target_revision,
+        })
     }
 }
 
@@ -1411,19 +2387,13 @@ mod tests {
 
     #[test]
     fn test_client_empty_url() {
-        let client = ArgocdClient::new(
-            "".to_string(),
-            "test-token".to_string(),
-        );
+        let client = ArgocdClient::new("".to_string(), "test-token".to_string());
         assert!(client.is_err());
     }
 
     #[test]
     fn test_client_empty_token() {
-        let client = ArgocdClient::new(
-            "https://argocd.example.com".to_string(),
-            "".to_string(),
-        );
+        let client = ArgocdClient::new("https://argocd.example.com".to_string(), "".to_string());
         assert!(client.is_err());
     }
 }

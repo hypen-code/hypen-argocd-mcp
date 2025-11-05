@@ -1,5 +1,6 @@
 use anyhow::Result;
 use argocd_mcp_server::tools::ArgocdMcpHandler;
+use serial_test::serial;
 
 #[tokio::test]
 async fn test_handler_default_not_read_only() -> Result<()> {
@@ -23,6 +24,7 @@ async fn test_handler_with_read_only_true() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_default() -> Result<()> {
     // Remove env var if it exists
     std::env::remove_var("ARGOCD_READ_ONLY");
@@ -33,6 +35,7 @@ async fn test_handler_from_env_default() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_true() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "true");
 
@@ -45,6 +48,7 @@ async fn test_handler_from_env_true() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_false() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "false");
 
@@ -57,6 +61,7 @@ async fn test_handler_from_env_false() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_invalid() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "invalid");
 
@@ -70,6 +75,7 @@ async fn test_handler_from_env_invalid() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_1() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "1");
 
@@ -83,6 +89,7 @@ async fn test_handler_from_env_1() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_yes() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "yes");
 
@@ -96,6 +103,7 @@ async fn test_handler_from_env_yes() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_handler_from_env_case_sensitive() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "True");
 
@@ -109,7 +117,8 @@ async fn test_handler_from_env_case_sensitive() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_handler_from_env_FALSE() -> Result<()> {
+#[serial]
+async fn test_handler_from_env_false_uppercase() -> Result<()> {
     std::env::set_var("ARGOCD_READ_ONLY", "FALSE");
 
     let handler = ArgocdMcpHandler::from_env();

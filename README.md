@@ -17,6 +17,8 @@ A robust, optimized Model Context Protocol (MCP) server for ArgoCD, built with R
 |---------|----------------|--------|
 | Core Tools (list, get, tree, logs, manifests, metadata) | ArgoCD v1.0+ | ✅ Fully Supported |
 | list_resource_events | ArgoCD v1.0+ | ✅ Fully Supported |
+| sync_application | ArgoCD v1.0+ | ✅ Fully Supported |
+| rollback_application | ArgoCD v1.0+ | ✅ Fully Supported |
 | server_side_diff | ArgoCD v2.5+ | ⚠️ Version-Specific |
 | get_application_sync_windows | ArgoCD v2.6+ | ⚠️ Version-Specific |
 
@@ -579,6 +581,580 @@ Sync Windows for application 'my-app' (2 total):
    Namespaces: backend-prod
 ```
 
+### `sync_application`
+
+Sync an ArgoCD application to its target state in Git. This operation deploys or updates the application resources to match what's defined in the Git repository. **Note: This is a write operation and is blocked in read-only mode.**
+
+**Arguments:**
+- `application_name` (required): Name of the application to sync
+- `revision` (optional): Specific revision to sync to (defaults to target revision in app spec)
+- `dry_run` (optional): If true, preview the sync without actually performing it (default: false)
+- `prune` (optional): Whether to prune resources that are no longer defined in Git (default: false)
+- `force` (optional): Use force apply to override any conflicts (default: false)
+- `resources` (optional): Specific resources to sync (if not specified, syncs all resources)
+- `sync_options` (optional): Sync options array (e.g., ["Validate=false", "CreateNamespace=true"])
+- `retry` (optional): Retry configuration (limit, backoff_duration, backoff_max_duration, backoff_factor)
+- `app_namespace` (optional): Application namespace
+- `project` (optional): Project identifier
+
+**Returns:**
+Optimized summary including:
+- Application name
+- Whether the operation was a dry-run
+- Current sync status and revision after sync
+- Current health status after sync
+- Target revision that was synced to
+- Whether prune/force were enabled
+- Sync options that were applied
+- Number of resources synced (if partial sync)
+
+**Use Cases:**
+- Deploy new application versions from Git
+- Update application configuration
+- Fix configuration drift
+- Preview changes with dry-run mode
+- Sync only specific resources (partial sync)
+- Force sync to override conflicts
+- Clean up orphaned resources with prune
+
+**Example Output:**
+```
+Sync Completed for application 'guestbook'
+
+Target Revision: HEAD
+Current Sync Revision: abc123def456
+
+Status:
+  Sync Status: Synced
+  Health Status: Progressing
+
+Configuration:
+  Dry Run: false
+  Prune Enabled: false
+  Force Enabled: false
+  Resources Synced: all
+
+✅ Sync completed successfully.
+    Monitor the application to ensure it reaches the desired state.
+```
+
+**Usage Examples:**
+
+Basic sync:
+```json
+{
+  "application_name": "guestbook"
+}
+```
+
+Dry-run to preview changes:
+```json
+{
+  "application_name": "guestbook",
+  "dry_run": true
+}
+```
+
+Sync to specific revision:
+```json
+{
+  "application_name": "guestbook",
+  "revision": "v1.2.3"
+}
+```
+
+Sync with prune:
+```json
+{
+  "application_name": "guestbook",
+  "prune": true
+}
+```
+
+Sync specific resources only:
+```json
+{
+  "application_name": "guestbook",
+  "resources": [
+    {
+      "group": "apps",
+      "kind": "Deployment",
+      "name": "guestbook-ui",
+      "namespace": "default"
+    }
+  ]
+}
+```
+
+Sync with options:
+```json
+{
+  "application_name": "guestbook",
+  "sync_options": ["Validate=false", "CreateNamespace=true"]
+}
+```
+
+**Common Sync Options:**
+- `Validate=false` - Skip kubectl validation
+- `CreateNamespace=true` - Create namespace if it doesn't exist
+- `PruneLast=true` - Prune resources after all other resources are synced
+- `ApplyOutOfSyncOnly=true` - Only apply out-of-sync resources
+- `ServerSideApply=true` - Use server-side apply
+- `Replace=true` - Use replace instead of apply
+
+**Best Practices:**
+1. **Always use dry-run first**: Preview the sync with `dry_run: true` before executing, especially in production
+2. **Monitor after sync**: Watch the application to ensure it reaches the desired state
+3. **Be cautious with force**: Only use force when you understand the implications
+4. **Be careful with prune**: Pruning removes resources - ensure you know what will be deleted
+5. **Use selective sync for large apps**: Sync specific resources when you only need to update certain components
+6. **Configure retries appropriately**: Use retry configuration for unreliable environments
+7. **Check sync windows**: Verify the application isn't in a blocked sync window before syncing
+
+**Read-Only Mode:**
+This tool is a write operation and is **blocked in read-only mode**. You will receive an error if you try to use it when `ARGOCD_READ_ONLY=true`.
+
+**See [docs/sync_application.md](docs/sync_application.md) for detailed documentation, advanced examples, and all sync options.**
+
+### `get_application_history`
+
+Get deployment history for an ArgoCD application. Returns a list of all deployments with history IDs, revisions, timestamps, and initiator information. **Essential for rollback operations.**
+
+**Arguments:**
+- `application_name` (required): The application name
+- `app_namespace` (optional): Application's namespace
+- `project` (optional): Project identifier
+
+**Returns:**
+Optimized summary including:
+- Total number of deployments
+- History entries (up to 20 most recent, sorted newest first):
+  - History ID (required for rollback)
+  - Git revision (shortened for display, full hash in JSON)
+  - Deployment timestamp
+  - Deploy duration (if available)
+  - Who initiated (username or "Automated")
+  - Source repository and path/chart
+  - Target revision (branch/tag)
+  - Current deployment marker (👉)
+  - Automated deployment indicator (🤖)
+
+**Use Cases:**
+- **Get history IDs for rollback operations** (most critical - required by `rollback_application`)
+- Audit deployments and track who deployed what
+- Understand deployment timeline and progression
+- Identify automated vs manual deployments
+- Track source changes across deployments
+- Troubleshoot issues by correlating with specific deployments
+- Verify current deployment status
+
+**Example Output:**
+```
+📜 Deployment History for 'guestbook'
+════════════════════════════════════════════════════════════════════════════════
+
+Total deployments: 5
+
+────────────────────────────────────────────────────────────────────────────────
+
+👉 1. History ID: 5 (Current)
+   Revision: ghi789jk (ghi789jkl012345678901234567890123456)
+   Deployed: 2025-01-05T10:30:00Z
+   Duration: from 2025-01-05T10:29:00Z to 2025-01-05T10:30:00Z
+   Initiated by: john.doe
+   Repository: https://github.com/argoproj/argocd-example-apps
+   Path: guestbook
+   Target Revision: v2.0
+
+────────────────────────────────────────────────────────────────────────────────
+
+   2. History ID: 4
+   Revision: def456ab (def456abc789012345678901234567890123)
+   Deployed: 2025-01-04T14:30:00Z
+   Initiated by: Automated 🤖
+   Repository: https://github.com/argoproj/argocd-example-apps
+   Path: guestbook
+   Target Revision: main
+
+────────────────────────────────────────────────────────────────────────────────
+
+💡 Tips:
+   - Use the History ID with 'rollback_application' to revert to a previous version
+   - Current deployment is marked with 👉
+   - 🤖 indicates automated deployments
+```
+
+**Rollback Workflow:**
+```
+1. get_application_history(application_name: "my-app")
+   → Get history IDs and find the version to rollback to
+
+2. rollback_application(application_name: "my-app", id: 4)
+   → Rollback to history ID 4 from step 1
+```
+
+**See [docs/get_application_history.md](docs/get_application_history.md) for detailed documentation, workflows, and examples.**
+
+### `refresh_application`
+
+Refresh an ArgoCD application from the Git repository. Forces ArgoCD to re-fetch manifests and recompute sync status. **This is a read-only operation** that does not modify cluster state - it only updates ArgoCD's cached view.
+
+**Arguments:**
+- `application_name` (required): The application name
+- `refresh_type` (optional): "normal" or "hard" (default: "hard")
+  - "normal": Regular refresh from cache
+  - "hard": Force refresh from Git repository
+- `app_namespace` (optional): Application's namespace
+- `project` (optional): Project identifier
+
+**Returns:**
+Before/after comparison showing:
+- Sync status (before/after) with change indicator
+- Health status (before/after) with change indicator
+- Sync revision (before/after) if changed
+- Repository URL and target revision
+- Summary of what changed
+- Visual indicators (🔄 for changed, ✓ for unchanged)
+
+**Use Cases:**
+- **Resolve stale sync status** (most common - fix "stuck" applications)
+- Update ArgoCD after pushing to Git
+- Troubleshoot applications not updating
+- Verify configuration changes are detected
+- Fix cache issues
+- Pre-sync verification
+- Detect new Git commits
+
+**Example Output:**
+```
+🔄 Refreshed Application 'guestbook'
+════════════════════════════════════════════════════════════════════════════════
+
+Refresh Type: hard
+Repository: https://github.com/argoproj/argocd-example-apps
+Target Revision: HEAD
+
+────────────────────────────────────────────────────────────────────────────────
+
+📊 Status Comparison:
+
+🔄  Sync Status:
+   Before: OutOfSync
+   After:  Synced
+   ➜ Changed!
+
+✓  Health Status:
+   Before: Healthy
+   After:  Healthy
+   ➜ No change
+
+────────────────────────────────────────────────────────────────────────────────
+
+✅ Refresh completed - Application state was updated
+
+Changes detected in: sync status
+
+💡 Tips:
+   - Refresh does not modify cluster resources, only ArgoCD's cache
+   - Use 'hard' refresh to force re-fetch from Git repository
+   - If sync status changed to 'OutOfSync', use 'sync_application' to deploy
+```
+
+**Common Scenarios:**
+
+1. **After Git Push**: Force ArgoCD to detect new commits
+   ```json
+   {
+     "application_name": "my-app",
+     "refresh_type": "hard"
+   }
+   ```
+
+2. **Stuck Application**: Fix applications that appear frozen
+   ```json
+   {
+     "application_name": "stuck-app",
+     "refresh_type": "hard"
+   }
+   ```
+
+3. **Pre-Deployment Check**: Refresh before syncing
+   ```
+   1. refresh_application → Get latest from Git
+   2. Check if OutOfSync
+   3. sync_application → Deploy if needed
+   ```
+
+**Important Notes:**
+- **Read-only operation**: Never modifies cluster resources
+- **Safe to run anytime**: Only updates ArgoCD's cache
+- **Not a deployment**: Refresh ≠ Sync (use `sync_application` to deploy)
+- **Available in read-only mode**: Can be used when `ARGOCD_READ_ONLY=true`
+
+**See [docs/refresh_application.md](docs/refresh_application.md) for detailed documentation, workflows, and troubleshooting scenarios.**
+
+### `get_resource`
+
+Get a specific Kubernetes resource from an ArgoCD application. Returns detailed resource manifest including metadata, spec, and status.
+
+**Arguments:**
+- `application_name` (required): The application name
+- `resource_name` (required): The name of the specific resource to retrieve
+- `version` (required): The Kubernetes API version (e.g., "v1", "apps/v1")
+- `kind` (required): The resource kind (e.g., "Pod", "Service", "Deployment")
+- `namespace` (optional): The namespace of the resource
+- `group` (optional): The API group (empty for core resources, "apps" for deployments, etc.)
+- `app_namespace` (optional): The namespace of the ArgoCD application
+- `project` (optional): The ArgoCD project identifier
+
+**Returns:**
+Optimized summary including:
+- Resource identification (name, kind, version, group, namespace)
+- Manifest summary with parsed metadata (labels, annotations, creation time, status)
+- Full manifest (first 50 lines shown, with indication if truncated)
+
+**Use Cases:**
+- Inspect the current state of a specific pod, deployment, service, or other Kubernetes resource
+- Review resource configuration details
+- Verify resource status and health
+- Troubleshoot issues with specific resources
+- Examine resource labels, annotations, and metadata
+
+**Example Output:**
+```
+Resource: nginx-deployment (Deployment)
+Application: production-app
+Version: v1
+Group: apps
+Namespace: production
+
+Manifest Summary:
+  API Version: apps/v1
+  Kind: Deployment
+  Name: nginx-deployment
+  Namespace: production
+  Labels (3):
+    app: nginx
+    env: production
+    version: 1.0
+  Annotations Count: 2
+  Created: 2025-01-01T00:00:00Z
+  Status: 3/3 replicas ready
+
+📄 Full Manifest:
+────────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: production
+...
+```
+
+**See [docs/get_resource.md](docs/get_resource.md) for detailed documentation and examples.**
+
+### `patch_resource`
+
+Patch a Kubernetes resource in an ArgoCD application using JSON patch, merge patch, or strategic merge patch formats. **Note: This is a write operation and is blocked in read-only mode.**
+
+**Arguments:**
+- `application_name` (required): The application name
+- `resource_name` (required): The name of the resource to patch
+- `version` (required): The Kubernetes API version (e.g., "v1", "apps/v1")
+- `kind` (required): The resource kind (e.g., "Deployment", "Service", "ConfigMap")
+- `patch` (required): The patch content as a JSON string
+- `namespace` (optional): The namespace of the resource
+- `group` (optional): The API group (empty for core resources)
+- `patch_type` (optional): Patch strategy type (json-patch, merge-patch, strategic-merge-patch)
+- `app_namespace` (optional): The namespace of the ArgoCD application
+- `project` (optional): The ArgoCD project identifier
+
+**Returns:**
+Optimized summary including:
+- Patch confirmation and resource identification
+- Updated manifest summary with parsed metadata
+- Full updated manifest (first 50 lines shown)
+
+**Use Cases:**
+- Scale deployments by updating replica count
+- Update container images in deployments
+- Add or modify labels and annotations
+- Update environment variables in pods
+- Modify ConfigMap or Secret data
+- Change resource limits and requests
+- Update service ports or selectors
+
+**Common Patch Types:**
+- `application/json-patch+json`: RFC 6902 JSON Patch for precise operations
+- `application/merge-patch+json`: RFC 7396 Merge Patch for simple merging
+- `application/strategic-merge-patch+json`: Kubernetes Strategic Merge (default, recommended)
+
+**Example - Scale Deployment:**
+```json
+{
+  "application_name": "backend-app",
+  "namespace": "production",
+  "resource_name": "api-deployment",
+  "version": "v1",
+  "group": "apps",
+  "kind": "Deployment",
+  "patch": "{\"spec\": {\"replicas\": 5}}",
+  "patch_type": "application/merge-patch+json"
+}
+```
+
+**Example Output:**
+```
+✅ Patched Resource: api-deployment (Deployment)
+Application: production-app
+Version: v1
+Group: apps
+Namespace: production
+
+Updated Manifest Summary:
+  API Version: apps/v1
+  Kind: Deployment
+  Name: api-deployment
+  Namespace: production
+  Labels (4):
+    app: api
+    env: production
+    version: 2.0
+    patched: true
+  Status: 5/5 replicas ready
+
+📄 Updated Manifest:
+────────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+...
+
+💡 Tip: Monitor the resource to ensure it reaches the desired state.
+```
+
+**Important Notes:**
+- Changes made via `patch_resource` may be overwritten by ArgoCD if the application is synced and the change conflicts with Git
+- For permanent changes, consider updating the Git repository and using `sync_application`
+- This operation is disabled when `ARGOCD_READ_ONLY=true`
+
+**See [docs/patch_resource.md](docs/patch_resource.md) for detailed documentation, patch strategy guide, and advanced examples.**
+
+### `rollback_application`
+
+Rollback an ArgoCD application to a previous deployed version by History ID. This operation reverts the application to a specific point in its deployment history. **Note: This is a write operation and is blocked in read-only mode.**
+
+**Arguments:**
+- `application_name` (required): Name of the application to rollback
+- `id` (required): History ID to rollback to. Use 0 to rollback to the previous version
+- `dry_run` (optional): If true, preview the rollback without actually performing it (default: false)
+- `prune` (optional): Whether to prune resources that are no longer defined in the target revision (default: false)
+- `app_namespace` (optional): Application namespace
+- `project` (optional): Project identifier
+
+**Returns:**
+Optimized summary including:
+- Application name
+- History ID that was rolled back to
+- Whether the operation was a dry-run
+- Current sync status and revision after rollback
+- Current health status after rollback
+- Target revision after rollback
+- Whether pruning was enabled
+
+**Use Cases:**
+- Quickly revert to a previous working version after a failed deployment
+- Rollback to a known-good state during incidents
+- Preview rollback effects with dry-run mode before executing
+- Remove orphaned resources with prune option
+- Audit and track rollback operations
+
+**Example Output:**
+```
+Rollback Completed for application 'guestbook'
+
+Rolled back to History ID: 5
+Target Revision: abc123
+Current Sync Revision: abc123def456
+
+Status:
+  Sync Status: Synced
+  Health Status: Healthy
+
+Options:
+  Dry Run: false
+  Prune Enabled: false
+
+✅ Rollback completed successfully.
+    Monitor the application to ensure it reaches the desired state.
+```
+
+**Dry Run Example:**
+```
+Rollback (Dry Run) for application 'guestbook'
+
+Rolled back to History ID: 3
+Target Revision: v1.0.0
+
+Status:
+  Sync Status: OutOfSync
+  Health Status: Healthy
+
+Options:
+  Dry Run: true
+  Prune Enabled: false
+
+⚠️  Note: This was a dry run. No actual changes were made.
+    Run without dry_run=true to perform the actual rollback.
+```
+
+**Usage Examples:**
+
+Basic rollback to specific history ID:
+```json
+{
+  "application_name": "guestbook",
+  "id": 5
+}
+```
+
+Rollback to previous version (ID 0):
+```json
+{
+  "application_name": "guestbook",
+  "id": 0
+}
+```
+
+Preview rollback with dry-run:
+```json
+{
+  "application_name": "guestbook",
+  "id": 3,
+  "dry_run": true
+}
+```
+
+Rollback with pruning:
+```json
+{
+  "application_name": "guestbook",
+  "id": 5,
+  "prune": true
+}
+```
+
+**Best Practices:**
+1. **Always use dry-run first**: Preview the rollback with `dry_run: true` before executing
+2. **Monitor after rollback**: Watch the application to ensure it reaches the desired state
+3. **Check history**: Use `revision_metadata` to verify the correct history ID
+4. **Be cautious with prune**: Only enable pruning if you're sure you want to remove resources
+5. **Document rollbacks**: Keep track of why and when rollbacks are performed
+
+**Read-Only Mode:**
+This tool is a write operation and is **blocked in read-only mode**. You will receive an error if you try to use it when `ARGOCD_READ_ONLY=true`.
+
+**See [docs/rollback_application.md](docs/rollback_application.md) for detailed documentation and additional examples.**
+
 ## Configuration
 
 The server requires the following environment variables:
@@ -597,15 +1173,25 @@ The server requires the following environment variables:
 
 The server supports a read-only mode that can be enabled by setting the `ARGOCD_READ_ONLY` environment variable to `true`. When enabled:
 
-- ✅ All current tools continue to work (all tools use GET requests only)
+- ✅ All read-only tools continue to work (GET requests)
+- ❌ Write operations like `rollback_application` are blocked
 - ✅ Server information displays "READ-ONLY MODE" indicator
 - ✅ Provides additional safety for production environments
 - ✅ Useful for audit/compliance requirements
 
-**Note**: All current tools in this MCP server only perform read operations (GET requests). The read-only mode is provided for:
-- Future-proofing when write operations are added
+**Write Operations (Blocked in Read-Only Mode):**
+- `sync_application` - Sync an application to its target state in Git
+- `rollback_application` - Rollback an application to a previous version
+- `patch_resource` - Patch a Kubernetes resource in an application
+
+**Read Operations (Always Available):**
+- All other tools (list, get, tree, logs, manifests, metadata, events, sync_windows, get_resource, get_application_history, refresh_application, etc.)
+
+The read-only mode is useful for:
+- Production monitoring and troubleshooting without risk of accidental changes
+- Audit and compliance requirements
+- Providing safe access to junior team members
 - Explicit documentation of access level
-- Compliance and audit requirements
 - Enhanced security posture
 
 ```bash

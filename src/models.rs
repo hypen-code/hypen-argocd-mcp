@@ -90,6 +90,8 @@ pub struct ApplicationStatus {
     pub sync: Option<SyncStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<ApplicationSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history: Option<Vec<RevisionHistory>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,41 +160,55 @@ pub struct ApplicationSummaryOutput {
 
 impl From<Application> for ApplicationSummaryOutput {
     fn from(app: Application) -> Self {
-        let name = app.metadata.as_ref()
+        let name = app
+            .metadata
+            .as_ref()
             .map(|m| m.name.clone())
             .unwrap_or_default();
 
-        let namespace = app.metadata.as_ref()
-            .and_then(|m| m.namespace.clone());
+        let namespace = app.metadata.as_ref().and_then(|m| m.namespace.clone());
 
-        let project = app.spec.as_ref()
-            .and_then(|s| s.project.clone());
+        let project = app.spec.as_ref().and_then(|s| s.project.clone());
 
-        let repo_url = app.spec.as_ref()
+        let repo_url = app
+            .spec
+            .as_ref()
             .and_then(|s| s.source.as_ref())
             .map(|src| src.repo_url.clone());
 
-        let target_revision = app.spec.as_ref()
+        let target_revision = app
+            .spec
+            .as_ref()
             .and_then(|s| s.source.as_ref())
             .and_then(|src| src.target_revision.clone());
 
-        let destination_server = app.spec.as_ref()
+        let destination_server = app
+            .spec
+            .as_ref()
             .and_then(|s| s.destination.as_ref())
             .and_then(|d| d.server.clone());
 
-        let destination_namespace = app.spec.as_ref()
+        let destination_namespace = app
+            .spec
+            .as_ref()
             .and_then(|s| s.destination.as_ref())
             .and_then(|d| d.namespace.clone());
 
-        let sync_status = app.status.as_ref()
+        let sync_status = app
+            .status
+            .as_ref()
             .and_then(|s| s.sync.as_ref())
             .map(|sync| sync.status.clone());
 
-        let health_status = app.status.as_ref()
+        let health_status = app
+            .status
+            .as_ref()
             .and_then(|s| s.health.as_ref())
             .map(|h| h.status.clone());
 
-        let auto_sync = app.spec.as_ref()
+        let auto_sync = app
+            .spec
+            .as_ref()
             .and_then(|s| s.sync_policy.as_ref())
             .and_then(|sp| sp.automated.as_ref())
             .is_some();
@@ -400,7 +416,8 @@ impl From<ApplicationTree> for ResourceTreeSummary {
         }
 
         // Get sample nodes (limit to 10 to save context)
-        let sample_nodes: Vec<ResourceNodeSummary> = tree.nodes
+        let sample_nodes: Vec<ResourceNodeSummary> = tree
+            .nodes
             .iter()
             .take(10)
             .map(|node| ResourceNodeSummary {
@@ -542,21 +559,15 @@ impl From<Application> for ApplicationDetailOutput {
         let spec = app.spec.as_ref();
         let status = app.status.as_ref();
 
-        let name = metadata
-            .map(|m| m.name.clone())
-            .unwrap_or_default();
+        let name = metadata.map(|m| m.name.clone()).unwrap_or_default();
 
-        let namespace = metadata
-            .and_then(|m| m.namespace.clone());
+        let namespace = metadata.and_then(|m| m.namespace.clone());
 
-        let labels = metadata
-            .and_then(|m| m.labels.clone());
+        let labels = metadata.and_then(|m| m.labels.clone());
 
-        let creation_timestamp = metadata
-            .and_then(|m| m.creation_timestamp.clone());
+        let creation_timestamp = metadata.and_then(|m| m.creation_timestamp.clone());
 
-        let project = spec
-            .and_then(|s| s.project.clone());
+        let project = spec.and_then(|s| s.project.clone());
 
         let source = spec.and_then(|s| s.source.as_ref());
         let repo_url = source.map(|src| src.repo_url.clone());
@@ -688,7 +699,8 @@ impl From<LogEntry> for AnalyzedLogEntry {
         let is_warning = matches!(level, LogLevel::Warning);
 
         // Detect potential issues beyond explicit log levels
-        let potential_issue = is_error || is_warning
+        let potential_issue = is_error
+            || is_warning
             || content.to_lowercase().contains("exception")
             || content.to_lowercase().contains("failed")
             || content.to_lowercase().contains("timeout")
@@ -734,10 +746,8 @@ impl PodLogsSummary {
         tail_lines: Option<i64>,
         filter_errors_only: bool,
     ) -> Self {
-        let mut analyzed: Vec<AnalyzedLogEntry> = entries
-            .into_iter()
-            .map(AnalyzedLogEntry::from)
-            .collect();
+        let mut analyzed: Vec<AnalyzedLogEntry> =
+            entries.into_iter().map(AnalyzedLogEntry::from).collect();
 
         // Apply error filtering if requested
         let filtered = filter_errors_only;
@@ -752,7 +762,9 @@ impl PodLogsSummary {
 
         let mut logs_by_level = HashMap::new();
         for entry in &analyzed {
-            *logs_by_level.entry(entry.level.as_str().to_string()).or_insert(0) += 1;
+            *logs_by_level
+                .entry(entry.level.as_str().to_string())
+                .or_insert(0) += 1;
         }
 
         PodLogsSummary {
@@ -806,13 +818,10 @@ impl ParsedManifest {
     /// Parse a YAML manifest string into structured data
     pub fn from_yaml(yaml: &str) -> Result<Self, String> {
         // Try to parse as JSON first (manifests can be JSON)
-        let parsed: serde_json::Value = serde_yaml::from_str(yaml)
-            .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+        let parsed: serde_json::Value =
+            serde_yaml::from_str(yaml).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
-        let kind = parsed["kind"]
-            .as_str()
-            .unwrap_or("Unknown")
-            .to_string();
+        let kind = parsed["kind"].as_str().unwrap_or("Unknown").to_string();
 
         let api_version = parsed["apiVersion"]
             .as_str()
@@ -867,9 +876,7 @@ impl From<ManifestResponse> for ManifestSummary {
         // Count by kind
         let mut manifests_by_kind = HashMap::new();
         for manifest in &manifests {
-            *manifests_by_kind
-                .entry(manifest.kind.clone())
-                .or_insert(0) += 1;
+            *manifests_by_kind.entry(manifest.kind.clone()).or_insert(0) += 1;
         }
 
         ManifestSummary {
@@ -1058,7 +1065,8 @@ impl From<EventList> for EventListSummary {
         }
 
         // Convert events to summaries
-        let events: Vec<EventSummary> = event_list.items
+        let events: Vec<EventSummary> = event_list
+            .items
             .into_iter()
             .map(EventSummary::from)
             .collect();
@@ -1079,15 +1087,20 @@ impl From<Event> for EventSummary {
         let reason = event.reason.clone();
         let message = event.message.clone();
 
-        let involved_object_kind = event.involved_object.as_ref()
+        let involved_object_kind = event
+            .involved_object
+            .as_ref()
             .and_then(|obj| obj.kind.clone());
-        let involved_object_name = event.involved_object.as_ref()
+        let involved_object_name = event
+            .involved_object
+            .as_ref()
             .and_then(|obj| obj.name.clone());
-        let involved_object_namespace = event.involved_object.as_ref()
+        let involved_object_namespace = event
+            .involved_object
+            .as_ref()
             .and_then(|obj| obj.namespace.clone());
 
-        let source_component = event.source.as_ref()
-            .and_then(|src| src.component.clone());
+        let source_component = event.source.as_ref().and_then(|src| src.component.clone());
 
         let count = event.count;
         let first_timestamp = event.first_timestamp.clone();
@@ -1156,9 +1169,10 @@ pub struct RevisionMetadataSummary {
 impl From<RevisionMetadata> for RevisionMetadataSummary {
     fn from(metadata: RevisionMetadata) -> Self {
         let message_full = metadata.message.clone();
-        let message_short = metadata.message.as_ref().and_then(|msg| {
-            msg.lines().next().map(|s| s.to_string())
-        });
+        let message_short = metadata
+            .message
+            .as_ref()
+            .and_then(|msg| msg.lines().next().map(|s| s.to_string()));
 
         let tag_count = metadata.tags.as_ref().map(|t| t.len()).unwrap_or(0);
         let is_signed = metadata.signature_info.is_some();
@@ -1234,4 +1248,668 @@ impl From<ApplicationSyncWindowsResponse> for ApplicationSyncWindowsSummary {
             windows: response.windows,
         }
     }
+}
+
+/// ApplicationRollbackRequest is the request for rolling back an application
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationRollbackRequest {
+    /// Application name (required)
+    pub name: String,
+    /// History ID to rollback to (required)
+    pub id: i64,
+    /// Dry run mode - if true, will not actually perform the rollback
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dry_run: Option<bool>,
+    /// Whether to prune resources that are no longer defined in Git
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prune: Option<bool>,
+    /// Application namespace
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_namespace: Option<String>,
+    /// Project identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
+/// ApplicationRollbackResponse contains the result of a rollback operation
+/// The API returns the full Application object after rollback
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationRollbackResponse {
+    /// Application after rollback
+    pub application: Application,
+}
+
+/// Optimized summary for Rollback output (context-efficient)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationRollbackSummary {
+    /// Application name
+    pub name: String,
+    /// History ID that was rolled back to
+    pub rolled_back_to_id: i64,
+    /// Whether the operation was a dry run
+    pub dry_run: bool,
+    /// Current sync status after rollback
+    pub sync_status: Option<String>,
+    /// Current sync revision after rollback
+    pub sync_revision: Option<String>,
+    /// Current health status after rollback
+    pub health_status: Option<String>,
+    /// Target revision after rollback
+    pub target_revision: Option<String>,
+    /// Whether prune was enabled
+    pub prune_enabled: bool,
+}
+
+impl ApplicationRollbackSummary {
+    pub fn from_application(app: Application, history_id: i64, dry_run: bool, prune: bool) -> Self {
+        let name = app
+            .metadata
+            .as_ref()
+            .map(|m| m.name.clone())
+            .unwrap_or_default();
+
+        let sync_status = app
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .map(|sync| sync.status.clone());
+
+        let sync_revision = app
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .and_then(|sync| sync.revision.clone());
+
+        let health_status = app
+            .status
+            .as_ref()
+            .and_then(|s| s.health.as_ref())
+            .map(|h| h.status.clone());
+
+        let target_revision = app
+            .spec
+            .as_ref()
+            .and_then(|s| s.source.as_ref())
+            .and_then(|src| src.target_revision.clone());
+
+        ApplicationRollbackSummary {
+            name,
+            rolled_back_to_id: history_id,
+            dry_run,
+            sync_status,
+            sync_revision,
+            health_status,
+            target_revision,
+            prune_enabled: prune,
+        }
+    }
+}
+
+/// SyncStrategy defines the sync strategy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStrategy {
+    /// Apply strategy options
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub apply: Option<SyncStrategyApply>,
+    /// Hook strategy options
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook: Option<SyncStrategyHook>,
+}
+
+/// SyncStrategyApply defines apply sync strategy options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStrategyApply {
+    /// Force apply
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force: Option<bool>,
+}
+
+/// SyncStrategyHook defines hook sync strategy options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStrategyHook {
+    /// Force hook execution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force: Option<bool>,
+}
+
+/// SyncResource defines a specific resource to sync
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncResource {
+    /// Resource group
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Resource kind
+    pub kind: String,
+    /// Resource name
+    pub name: String,
+    /// Resource namespace
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+}
+
+/// ApplicationSyncRequest is the request for syncing an application
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationSyncRequest {
+    /// Application name (required)
+    pub name: String,
+    /// Revision to sync to (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// Dry run mode - if true, will not actually perform the sync
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dry_run: Option<bool>,
+    /// Whether to prune resources that are no longer defined in Git
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prune: Option<bool>,
+    /// Sync strategy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<SyncStrategy>,
+    /// Specific resources to sync (if not specified, syncs all resources)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<Vec<SyncResource>>,
+    /// Manifests to sync
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifests: Option<Vec<String>>,
+    /// Sync options
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_options: Option<Vec<String>>,
+    /// Retry strategy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry: Option<RetryStrategy>,
+    /// Application namespace
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_namespace: Option<String>,
+    /// Project identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
+/// RetryStrategy defines the retry strategy for sync operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryStrategy {
+    /// Maximum number of retry attempts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i64>,
+    /// Backoff strategy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backoff: Option<Backoff>,
+}
+
+/// Backoff defines the backoff strategy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Backoff {
+    /// Duration of the backoff (e.g., "5s", "1m")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<String>,
+    /// Maximum duration of the backoff
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_duration: Option<String>,
+    /// Factor to multiply the backoff duration by
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub factor: Option<i64>,
+}
+
+/// Optimized summary for Sync output (context-efficient)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationSyncSummary {
+    /// Application name
+    pub name: String,
+    /// Whether the operation was a dry run
+    pub dry_run: bool,
+    /// Current sync status after sync
+    pub sync_status: Option<String>,
+    /// Current sync revision after sync
+    pub sync_revision: Option<String>,
+    /// Current health status after sync
+    pub health_status: Option<String>,
+    /// Target revision that was synced to
+    pub target_revision: Option<String>,
+    /// Whether prune was enabled
+    pub prune_enabled: bool,
+    /// Whether force was enabled
+    pub force_enabled: bool,
+    /// Sync options that were applied
+    pub sync_options: Vec<String>,
+    /// Number of resources synced (if resources were specified)
+    pub resources_count: Option<usize>,
+}
+
+impl ApplicationSyncSummary {
+    pub fn from_application(
+        app: Application,
+        dry_run: bool,
+        prune: bool,
+        force: bool,
+        sync_options: Vec<String>,
+        resources_count: Option<usize>,
+    ) -> Self {
+        let name = app
+            .metadata
+            .as_ref()
+            .map(|m| m.name.clone())
+            .unwrap_or_default();
+
+        let sync_status = app
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .map(|sync| sync.status.clone());
+
+        let sync_revision = app
+            .status
+            .as_ref()
+            .and_then(|s| s.sync.as_ref())
+            .and_then(|sync| sync.revision.clone());
+
+        let health_status = app
+            .status
+            .as_ref()
+            .and_then(|s| s.health.as_ref())
+            .map(|h| h.status.clone());
+
+        let target_revision = app
+            .spec
+            .as_ref()
+            .and_then(|s| s.source.as_ref())
+            .and_then(|src| src.target_revision.clone());
+
+        ApplicationSyncSummary {
+            name,
+            dry_run,
+            sync_status,
+            sync_revision,
+            health_status,
+            target_revision,
+            prune_enabled: prune,
+            force_enabled: force,
+            sync_options,
+            resources_count,
+        }
+    }
+}
+
+/// ApplicationResourceResponse contains a single application resource manifest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationResourceResponse {
+    /// The resource manifest as a string (YAML or JSON)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+}
+
+/// Optimized summary for GetResource output (context-efficient)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationResourceSummary {
+    /// Application name
+    pub app_name: String,
+    /// Resource kind (e.g., Pod, Service, Deployment)
+    pub kind: String,
+    /// Resource name
+    pub resource_name: String,
+    /// Resource namespace (if applicable)
+    pub namespace: Option<String>,
+    /// Resource API version
+    pub version: String,
+    /// Resource API group (empty string for core resources)
+    pub group: Option<String>,
+    /// Parsed manifest summary with key fields
+    pub manifest_summary: ResourceManifestSummary,
+    /// Raw manifest (truncated if too large)
+    pub manifest: String,
+}
+
+/// Summary of key fields from a resource manifest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceManifestSummary {
+    /// Resource API version from manifest
+    pub api_version: Option<String>,
+    /// Resource kind from manifest
+    pub kind: Option<String>,
+    /// Resource name from metadata
+    pub name: Option<String>,
+    /// Resource namespace from metadata
+    pub namespace: Option<String>,
+    /// Resource labels
+    pub labels: Option<HashMap<String, String>>,
+    /// Resource annotations (truncated if too many)
+    pub annotations_count: Option<usize>,
+    /// Creation timestamp
+    pub creation_timestamp: Option<String>,
+    /// Resource status summary (for resources with status)
+    pub status_summary: Option<String>,
+}
+
+impl ApplicationResourceSummary {
+    /// Create summary from manifest string
+    pub fn from_manifest(
+        app_name: String,
+        kind: String,
+        resource_name: String,
+        namespace: Option<String>,
+        version: String,
+        group: Option<String>,
+        manifest: String,
+    ) -> Self {
+        // Parse manifest to extract key fields
+        let manifest_summary = Self::parse_manifest_summary(&manifest);
+
+        // Truncate manifest if too large (keep first 10000 chars for context efficiency)
+        let truncated_manifest = if manifest.len() > 10000 {
+            format!(
+                "{}... (truncated, {} total chars)",
+                &manifest[..10000],
+                manifest.len()
+            )
+        } else {
+            manifest.clone()
+        };
+
+        ApplicationResourceSummary {
+            app_name,
+            kind,
+            resource_name,
+            namespace,
+            version,
+            group,
+            manifest_summary,
+            manifest: truncated_manifest,
+        }
+    }
+
+    /// Parse manifest to extract key summary fields
+    fn parse_manifest_summary(manifest: &str) -> ResourceManifestSummary {
+        // Try to parse as YAML/JSON
+        let parsed: Option<serde_json::Value> = serde_yaml::from_str(manifest)
+            .ok()
+            .or_else(|| serde_json::from_str(manifest).ok());
+
+        if let Some(data) = parsed {
+            let api_version = data["apiVersion"].as_str().map(|s| s.to_string());
+            let kind = data["kind"].as_str().map(|s| s.to_string());
+
+            let metadata = &data["metadata"];
+            let name = metadata["name"].as_str().map(|s| s.to_string());
+            let namespace = metadata["namespace"].as_str().map(|s| s.to_string());
+            let creation_timestamp = metadata["creationTimestamp"]
+                .as_str()
+                .map(|s| s.to_string());
+
+            let labels = metadata["labels"].as_object().map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            });
+
+            let annotations_count = metadata["annotations"].as_object().map(|obj| obj.len());
+
+            // Extract status summary if available
+            let status_summary = if let Some(status) = data.get("status") {
+                // Try to extract key status fields
+                if let Some(phase) = status["phase"].as_str() {
+                    Some(format!("Phase: {}", phase))
+                } else if let Some(conditions) = status["conditions"].as_array() {
+                    let ready = conditions
+                        .iter()
+                        .find(|c| c["type"].as_str() == Some("Ready"))
+                        .and_then(|c| c["status"].as_str());
+                    ready.map(|s| format!("Ready: {}", s))
+                } else if let Some(replicas) = status["replicas"].as_i64() {
+                    let ready_replicas = status["readyReplicas"].as_i64().unwrap_or(0);
+                    Some(format!("{}/{} replicas ready", ready_replicas, replicas))
+                } else {
+                    Some("Status available".to_string())
+                }
+            } else {
+                None
+            };
+
+            ResourceManifestSummary {
+                api_version,
+                kind,
+                name,
+                namespace,
+                labels,
+                annotations_count,
+                creation_timestamp,
+                status_summary,
+            }
+        } else {
+            // Failed to parse, return empty summary
+            ResourceManifestSummary {
+                api_version: None,
+                kind: None,
+                name: None,
+                namespace: None,
+                labels: None,
+                annotations_count: None,
+                creation_timestamp: None,
+                status_summary: None,
+            }
+        }
+    }
+}
+
+/// RevisionHistory contains information about a deployment to the application
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionHistory {
+    /// ID is an auto incrementing identifier of the RevisionHistory
+    pub id: i64,
+    /// Revision holds the revision the sync was performed against
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// DeployedAt holds the time the sync operation completed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployed_at: Option<String>,
+    /// DeployStartedAt holds the time the sync operation started
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deploy_started_at: Option<String>,
+    /// Source is a reference to the application source used for the sync operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<ApplicationSource>,
+    /// Sources is a reference to the application sources used for the sync operation (multi-source)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Vec<ApplicationSource>>,
+    /// Revisions holds the revision of each source in sources field
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revisions: Option<Vec<String>>,
+    /// InitiatedBy contains information about who initiated the operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initiated_by: Option<OperationInitiator>,
+}
+
+/// OperationInitiator contains information about who started an operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationInitiator {
+    /// Username contains the name of a user who started operation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    /// Automated is set to true if operation was initiated automatically
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automated: Option<bool>,
+}
+
+/// Optimized summary for application history (context efficient)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationHistorySummary {
+    /// Application name
+    pub application_name: String,
+    /// Total number of history entries
+    pub total_entries: usize,
+    /// History entries (sorted by ID descending - newest first)
+    pub entries: Vec<RevisionHistorySummary>,
+}
+
+/// Optimized summary for a single revision history entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionHistorySummary {
+    /// History ID
+    pub id: i64,
+    /// Revision/commit hash (shortened for display)
+    pub revision: String,
+    /// Full revision (for programmatic use)
+    pub revision_full: String,
+    /// Deployed at timestamp
+    pub deployed_at: String,
+    /// Deploy duration (if deploy_started_at is available)
+    pub deploy_duration: Option<String>,
+    /// Source repository URL
+    pub source_repo: Option<String>,
+    /// Source path or chart
+    pub source_path: Option<String>,
+    /// Target revision (branch/tag)
+    pub source_target_revision: Option<String>,
+    /// Who initiated the deployment
+    pub initiated_by: Option<String>,
+    /// Whether deployment was automated
+    pub automated: bool,
+}
+
+impl RevisionHistorySummary {
+    /// Convert RevisionHistory to optimized summary
+    pub fn from_revision_history(
+        history: RevisionHistory,
+    ) -> Self {
+        let revision_full = history.revision.clone().unwrap_or_else(|| "unknown".to_string());
+        let revision = if revision_full.len() > 8 {
+            revision_full[..8].to_string()
+        } else {
+            revision_full.clone()
+        };
+
+        // Calculate deploy duration if both timestamps available
+        let deploy_duration = if let (Some(started), Some(completed)) =
+            (&history.deploy_started_at, &history.deployed_at) {
+            // Simple duration string - could be enhanced with actual parsing
+            Some(format!("from {} to {}", started, completed))
+        } else {
+            None
+        };
+
+        // Get source information (prefer single source, fallback to first of multi-source)
+        let (source_repo, source_path, source_target_revision) = if let Some(source) = &history.source {
+            (
+                Some(source.repo_url.clone()),
+                source.path.clone().or_else(|| source.chart.clone()),
+                source.target_revision.clone(),
+            )
+        } else if let Some(sources) = &history.sources {
+            if let Some(first_source) = sources.first() {
+                (
+                    Some(first_source.repo_url.clone()),
+                    first_source.path.clone().or_else(|| first_source.chart.clone()),
+                    first_source.target_revision.clone(),
+                )
+            } else {
+                (None, None, None)
+            }
+        } else {
+            (None, None, None)
+        };
+
+        // Get initiator information
+        let (initiated_by, automated) = if let Some(initiator) = &history.initiated_by {
+            let username = if let Some(username) = &initiator.username {
+                Some(username.clone())
+            } else if initiator.automated.unwrap_or(false) {
+                Some("Automated".to_string())
+            } else {
+                Some("Unknown".to_string())
+            };
+            (username, initiator.automated.unwrap_or(false))
+        } else {
+            (None, false)
+        };
+
+        RevisionHistorySummary {
+            id: history.id,
+            revision,
+            revision_full,
+            deployed_at: history.deployed_at.unwrap_or_else(|| "unknown".to_string()),
+            deploy_duration,
+            source_repo,
+            source_path,
+            source_target_revision,
+            initiated_by,
+            automated,
+        }
+    }
+}
+
+/// RefreshApplicationSummary contains the result of refreshing an application
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshApplicationSummary {
+    /// Application name
+    pub application_name: String,
+    /// Refresh type used
+    pub refresh_type: String,
+    /// Sync status before refresh
+    pub sync_status_before: String,
+    /// Sync status after refresh
+    pub sync_status_after: String,
+    /// Health status before refresh
+    pub health_status_before: String,
+    /// Health status after refresh
+    pub health_status_after: String,
+    /// Sync revision before refresh
+    pub sync_revision_before: Option<String>,
+    /// Sync revision after refresh
+    pub sync_revision_after: Option<String>,
+    /// Whether sync status changed
+    pub sync_status_changed: bool,
+    /// Whether health status changed
+    pub health_status_changed: bool,
+    /// Whether revision changed
+    pub revision_changed: bool,
+    /// Repository URL
+    pub repo_url: Option<String>,
+    /// Target revision (branch/tag)
+    pub target_revision: Option<String>,
+}
+
+/// ApplicationResourcePatchRequest contains parameters for patching a resource
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationResourcePatchRequest {
+    /// Application name (required)
+    pub name: String,
+    /// Patch content (required) - typically a JSON patch document
+    pub patch: String,
+    /// Resource namespace (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    /// Resource name (required)
+    pub resource_name: String,
+    /// Resource version (e.g., "v1")
+    pub version: String,
+    /// Resource API group (empty string for core resources)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Resource kind (e.g., "Deployment", "Service")
+    pub kind: String,
+    /// Patch type (e.g., "application/json-patch+json", "application/merge-patch+json", "application/strategic-merge-patch+json")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_type: Option<String>,
+    /// Application namespace (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_namespace: Option<String>,
+    /// Project identifier (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
